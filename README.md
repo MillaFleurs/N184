@@ -28,6 +28,55 @@ N184 is not theoretical.  It has been used to find bugs and generate fixes in mu
 - **⚖️ Professional Methodology**: Multi-phase analysis designed to help make code more stable and secure.
 
 ---
+## Requirements
+
+### System Requirements
+
+- **Container Runtime**: Podman 4.0+ or Docker 20.10+
+  - Podman recommended for rootless execution
+  - Install: [podman.io/get-started](https://podman.io/get-started)
+  
+- **Python**: 3.11 or higher
+  - Check version: `python3 --version`
+
+- **Git**: For cloning repositories to analyze
+  - Install: `git --version` to check
+
+### Python Dependencies
+
+Install via `requirements.txt`:
+
+```bash
+pip install -r requirements.txt
+```
+
+**Core dependencies:**
+- `pydantic-ai>=1.0.0` - AI agent framework
+- `pydantic>=2.0.0` - Data validation
+- `pyyaml>=6.0` - Configuration parsing
+- `anthropic>=0.86.0` - Claude API client
+- `openai>=1.0.0` - GPT-4 and DeepSeek API client
+
+### API Keys (Required)
+
+N184 requires at least one API key to function:
+
+- **Anthropic** (Claude): [console.anthropic.com](https://console.anthropic.com/)
+- **DeepSeek**: [platform.deepseek.com](https://platform.deepseek.com/)
+- **OpenAI** (GPT-4): [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+
+**Cost estimate:** ~$0.20-0.50 per repository analysis with DeepSeek (cheapest), ~$5-15 with Claude/GPT-4.
+
+**Tip:** Start with DeepSeek for testing - it's 10-20x cheaper than Claude/GPT-4.
+
+### Optional
+
+- **Docker Compose**: For multi-agent parallel execution
+  - Install: `docker-compose --version` to check
+  
+- **Storage**: ~2-5GB per repository clone (cached in `~/.n184/cache/`)
+
+---
 
 ## Quick Start
 
