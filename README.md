@@ -1,7 +1,7 @@
 # N184 
 N184 uses multi-model AI consensus (Claude, DeepSeek, GPT-4) to discover security vulnerabilities in codebases. Multiple agents independently analyze code and vote on findings, reducing false positives with actionable PRs. Named after element 184's island of stability.
 
-**AI-powered security and bug vulnerability analysis **
+**AI-powered security and bug vulnerability analysis**
 
 ---
 
