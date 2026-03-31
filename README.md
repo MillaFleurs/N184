@@ -14,7 +14,7 @@ It's power comes in a few unique features that allow it to find bugs and securit
 Specifically:
 - An entire codebase is mapped out and referenced to documentation.  This allows agents to flag behavior that does not match documentation, allowing the user to either update code or documentation.
 - Agents analyze git history to flag repeated errors.  If a contributor makes the same mistake over and over, we catch it.
-- Multiple models are used to flag bugs absed on the analysis above.
+- Multiple models are used to flag bugs based on the analysis above.
 - Bug reports are analyzed for consensus, and a "devil's advocate" approach is used to push for clear PRs with steps to reproduce.
 - Once the cycle of analysis is completed, the database is updated, and the agents get better at finding bugs.
 
@@ -138,4 +138,16 @@ docker-compose up
 ```
 
 ---
+## Design Philosophy
 
+### Agent Naming Convention
+
+When managing a swarm of AI agents, "Scout#145" doesn't roll off the tongue. I needed a way to refer to each agent with personality and keep them distinct. To solve this, I borrowed characters from Honoré de Balzac's *La Comédie Humaine*:
+
+- **Vautrin**: The primary analyst - sees through facades, finds what others miss
+- **Goriot**: The consensus validator - patient, methodical, brings agents together
+- **Rastignac**: Pattern detection - ambitious, strategic, learns from history
+- **Bianchon**: Deep diagnostics - medical precision applied to code
+- **Nucingen**: Risk assessment - banker's eye for CVSS scoring and impact
+
+Each character's traits map to their function in the analysis pipeline. It's more memorable than numerical IDs and makes debugging conversations clearer: "Vautrin found it, but Goriot rejected it in consensus" is easier to parse than "Agent-001 found it, but Agent-004 rejected it."
