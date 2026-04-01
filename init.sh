@@ -11,7 +11,7 @@ set -euo pipefail
 # ── NanoClaw Repository Setup ───────────────────────────────────────────────
 
 # Default NanoClaw repository URL (can be overridden via NANOCLAW_REPO_URL env var)
-NANOCLAW_REPO_URL="${NANOCLAW_REPO_URL:-git@morty:/srv/git/nanoclaw.git}"
+NANOCLAW_REPO_URL="${NANOCLAW_REPO_URL:-https://github.com/qwibitai/nanoclaw.git}"
 
 # Check if we're already in a NanoClaw directory
 if [ -f "package.json" ] && grep -q '"name".*"nanoclaw"' package.json 2>/dev/null; then
