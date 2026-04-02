@@ -39,6 +39,12 @@ else
   cd nanoclaw
   PROJECT_ROOT="$(pwd)"
   echo "✓ NanoClaw cloned successfully"
+
+  # Copy .env from script directory into the nanoclaw directory if not already present
+  if [ ! -f "$PROJECT_ROOT/.env" ] && [ -f "$SCRIPT_DIR/.env" ]; then
+    cp "$SCRIPT_DIR/.env" "$PROJECT_ROOT/.env"
+    echo "✓ .env copied from $SCRIPT_DIR"
+  fi
 fi
 
 # ── Cleanup on exit ──────────────────────────────────────────────────────────
@@ -205,20 +211,54 @@ if ! node -e "require('better-sqlite3')" 2>/dev/null; then
 fi
 ok "Dependencies installed"
 
-# ── Step 1b: Patch container runtime autodetection ─────────────────────────
+# ── Step 1b: Patch container-runtime.ts to read CONTAINER_RUNTIME from .env ─
 
 CONTAINER_RUNTIME_TS="$PROJECT_ROOT/src/container-runtime.ts"
 if [ -f "$CONTAINER_RUNTIME_TS" ]; then
-  if [ "$RUNTIME" != "docker" ]; then
-    info "Patching container-runtime.ts to use $RUNTIME..."
-    sed "s/\"docker\"/\"$RUNTIME\"/g" "$CONTAINER_RUNTIME_TS" > "${CONTAINER_RUNTIME_TS}.tmp" \
-      && mv "${CONTAINER_RUNTIME_TS}.tmp" "$CONTAINER_RUNTIME_TS"
-    ok "Container runtime set to $RUNTIME in source"
+  # Replace the hardcoded 'docker' default with env-aware lookup via readEnvFile.
+  # This lets the .env CONTAINER_RUNTIME value (e.g. podman) take effect at runtime
+  # without brittle sed replacement of the binary name.
+  if grep -q "^export const CONTAINER_RUNTIME_BIN = 'docker'" "$CONTAINER_RUNTIME_TS"; then
+    info "Patching container-runtime.ts to read CONTAINER_RUNTIME from .env..."
+    # Add the readEnvFile import if not already present
+    if ! grep -q "readEnvFile" "$CONTAINER_RUNTIME_TS"; then
+      sed -i '' "/import { logger } from '.\/logger.js';/i\\
+import { readEnvFile } from './env.js';
+" "$CONTAINER_RUNTIME_TS"
+    fi
+    # Replace the hardcoded constant with env-aware lookup
+    sed -i '' "s|^export const CONTAINER_RUNTIME_BIN = 'docker';|const _envRT = readEnvFile(['CONTAINER_RUNTIME']);\\
+export const CONTAINER_RUNTIME_BIN = process.env.CONTAINER_RUNTIME || _envRT.CONTAINER_RUNTIME || 'docker';|" "$CONTAINER_RUNTIME_TS"
+    ok "Container runtime reads from .env CONTAINER_RUNTIME (detected: $RUNTIME)"
   else
-    ok "Container runtime already set to docker (default)"
+    ok "Container runtime already patched"
   fi
 else
   warn "src/container-runtime.ts not found — skipping runtime patch"
+fi
+
+# ── Step 1c: Install Telegram channel ──────────────────────────────────────
+
+if [ ! -f "$PROJECT_ROOT/src/channels/telegram.ts" ]; then
+  info "Installing Telegram channel skill..."
+  if ! git -C "$PROJECT_ROOT" remote get-url telegram >/dev/null 2>&1; then
+    git -C "$PROJECT_ROOT" remote add telegram https://github.com/qwibitai/nanoclaw-telegram.git
+  fi
+  git -C "$PROJECT_ROOT" fetch telegram main 2>&1 | tail -1
+  if git -C "$PROJECT_ROOT" merge telegram/main --no-edit 2>&1; then
+    ok "Telegram channel merged"
+  else
+    # Handle package-lock.json conflicts
+    git -C "$PROJECT_ROOT" checkout --theirs package-lock.json 2>/dev/null || true
+    git -C "$PROJECT_ROOT" add package-lock.json 2>/dev/null || true
+    git -C "$PROJECT_ROOT" -c core.editor=true merge --continue 2>/dev/null || true
+    ok "Telegram channel merged (resolved conflicts)"
+  fi
+  # Re-install deps since package.json changed (adds grammy)
+  npm ci --silent 2>&1 | tail -1 || fail "npm install failed after Telegram merge"
+  ok "Telegram dependencies installed"
+else
+  ok "Telegram channel already installed"
 fi
 
 # ── Step 2: Build TypeScript ────────────────────────────────────────────────
@@ -238,6 +278,7 @@ ok "Container image built: nanoclaw-agent:latest"
 info "Testing container..."
 CONTAINER_TIMEOUT=30
 TEST_TMPFILE=$(mktemp)
+TEST_CONTAINER_NAME="N184_Honore_test-$$"
 
 # Pass credentials to container (OneCLI gateway or .env vars)
 CRED_ARGS=()
@@ -252,29 +293,72 @@ else
   done
 fi
 
-echo '{"prompt":"Say hello","groupFolder":"test","chatJid":"test@init","isMain":false}' | \
-  $RUNTIME run -i --rm "${CRED_ARGS[@]}" nanoclaw-agent:latest >"$TEST_TMPFILE" 2>/dev/null &
-TEST_PID=$!
-( sleep "$CONTAINER_TIMEOUT" && kill "$TEST_PID" 2>/dev/null ) &
-WATCHDOG_PID=$!
-wait "$TEST_PID" 2>/dev/null && TEST_EXIT=0 || TEST_EXIT=$?
-kill "$WATCHDOG_PID" 2>/dev/null 2>&1 || true
-wait "$WATCHDOG_PID" 2>/dev/null 2>&1 || true
+# Run the container with a name so the watchdog can kill it reliably.
+# Use timeout(1) to cap the entire pipeline — this avoids the hang where
+# killing the shell PID leaves the container process running.
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="timeout $CONTAINER_TIMEOUT"
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="gtimeout $CONTAINER_TIMEOUT"
+else
+  TIMEOUT_CMD=""
+fi
+
+$TIMEOUT_CMD sh -c \
+  'echo '"'"'{"prompt":"Say hello","groupFolder":"test","chatJid":"test@init","isMain":false}'"'"' | \
+   '"$RUNTIME"' run -i --rm --name '"$TEST_CONTAINER_NAME"' '"$(printf '%q ' "${CRED_ARGS[@]}")"' nanoclaw-agent:latest' \
+  >"$TEST_TMPFILE" 2>/dev/null
+TEST_EXIT=$?
+
+# Clean up container in case timeout killed the shell but left it running
+$RUNTIME stop -t 1 "$TEST_CONTAINER_NAME" 2>/dev/null || true
+$RUNTIME rm "$TEST_CONTAINER_NAME" 2>/dev/null || true
+
 TEST_OUTPUT=$(cat "$TEST_TMPFILE")
 rm -f "$TEST_TMPFILE"
 if echo "$TEST_OUTPUT" | grep -q "NANOCLAW_OUTPUT"; then
   ok "Container runs successfully"
-elif [ "$TEST_EXIT" -eq 137 ] || [ -z "$TEST_OUTPUT" ]; then
+elif [ "$TEST_EXIT" -eq 124 ] || [ "$TEST_EXIT" -eq 137 ] || [ -z "$TEST_OUTPUT" ]; then
   warn "Container test timed out after ${CONTAINER_TIMEOUT}s (check credentials and network)"
 else
   warn "Container test didn't produce expected output (may need credentials)"
 fi
 
-# ── Step 5: Register main group ─────────────────────────────────────────────
+# ── Step 5: Deploy soul files ──────────────────────────────────────────────
+# Soul files must be deployed BEFORE registration, because the register step
+# copies a generic CLAUDE.md template into groups/<folder>/ if none exists.
+# By placing the Honoré soul first, registration sees it and leaves it alone.
 
-info "Registering main group..."
+SOULS_DIR="$SCRIPT_DIR/souls"
+HONORE_SOURCE="$SOULS_DIR/claude-honore.md"
+MAIN_CLAUDE_MD="$PROJECT_ROOT/groups/main/CLAUDE.md"
+
 mkdir -p "$PROJECT_ROOT/store" "$PROJECT_ROOT/data" "$PROJECT_ROOT/logs"
 mkdir -p "$PROJECT_ROOT/groups/main/logs"
+
+if [ ! -f "$HONORE_SOURCE" ]; then
+  fail "claude-honore.md not found at $HONORE_SOURCE"
+fi
+info "Writing main group CLAUDE.md from souls/claude-honore.md..."
+cp "$HONORE_SOURCE" "$MAIN_CLAUDE_MD"
+ok "Main group CLAUDE.md written (Honoré persona)"
+
+# Deploy all soul files (Honoré + subagents) to groups/main/souls/
+SOULS_DEST="$PROJECT_ROOT/groups/main/souls"
+mkdir -p "$SOULS_DEST"
+
+for soul in claude-honore.md claude-vautrin.md claude-rastignac.md; do
+  if [ -f "$SOULS_DIR/$soul" ]; then
+    cp "$SOULS_DIR/$soul" "$SOULS_DEST/$soul"
+  else
+    warn "Soul file $soul not found in $SOULS_DIR"
+  fi
+done
+ok "Agent souls deployed to groups/main/souls/ (Honoré, Vautrin, Rastignac)"
+
+# ── Step 5b: Register main group ──────────────────────────────────────────
+
+info "Registering main group..."
 
 # Use the setup register step
 npx tsx setup/index.ts --step register \
@@ -288,35 +372,26 @@ npx tsx setup/index.ts --step register \
   --assistant-name "$ASSISTANT_NAME" 2>&1 | grep -v "^===" || true
 ok "Main group registered"
 
-# ── Step 5b: Write main group CLAUDE.md ─────────────────────────────────────
+# ── Step 5c: Register Telegram chat ───────────────────────────────────────
 
-MAIN_CLAUDE_MD="$PROJECT_ROOT/groups/main/CLAUDE.md"
-SOULS_DIR="$SCRIPT_DIR/souls"
-HONORE_SOURCE="$SOULS_DIR/claude-honore.md"
-if [ ! -f "$MAIN_CLAUDE_MD" ]; then
-  if [ ! -f "$HONORE_SOURCE" ]; then
-    fail "claude-honore.md not found at $HONORE_SOURCE"
-  fi
-  info "Writing main group CLAUDE.md from souls/claude-honore.md..."
-  cp "$HONORE_SOURCE" "$MAIN_CLAUDE_MD"
-  ok "Main group CLAUDE.md written (Honoré persona)"
-else
-  ok "Main group CLAUDE.md already exists (skipped)"
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+  TELEGRAM_CHAT_NAME="${TELEGRAM_CHAT_NAME:-Main}"
+  info "Registering Telegram chat $TELEGRAM_CHAT_ID..."
+  npx tsx setup/index.ts --step register \
+    --jid "$TELEGRAM_CHAT_ID" \
+    --name "$TELEGRAM_CHAT_NAME" \
+    --trigger "@${ASSISTANT_NAME}" \
+    --folder "main" \
+    --channel "telegram" \
+    --is-main \
+    --no-trigger-required \
+    --assistant-name "$ASSISTANT_NAME" 2>&1 | grep -v "^===" || true
+  ok "Telegram chat registered ($TELEGRAM_CHAT_ID)"
+elif [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+  warn "TELEGRAM_BOT_TOKEN is set but TELEGRAM_CHAT_ID is missing from .env"
+  echo "  After startup, send /chatid to your bot in Telegram to get the ID,"
+  echo "  then add TELEGRAM_CHAT_ID=tg:<chat-id> to .env and re-run init.sh"
 fi
-
-# ── Step 5c: Copy agent soul files ────────────────────────────────────────
-
-SOULS_DEST="$PROJECT_ROOT/groups/main/souls"
-mkdir -p "$SOULS_DEST"
-
-for soul in claude-vautrin.md claude-rastignac.md; do
-  if [ -f "$SOULS_DIR/$soul" ]; then
-    cp "$SOULS_DIR/$soul" "$SOULS_DEST/$soul"
-  else
-    warn "Soul file $soul not found in $SOULS_DIR"
-  fi
-done
-ok "Agent souls deployed to groups/main/souls/ (Vautrin, Rastignac)"
 
 # ── Step 6: Mount allowlist ─────────────────────────────────────────────────
 
@@ -332,11 +407,34 @@ else
   ok "Mount allowlist already exists"
 fi
 
+# ── Step 6b: Sync .env to container environment ──────────────────────────
+
+info "Syncing .env to container environment..."
+mkdir -p "$PROJECT_ROOT/data/env"
+cp "$PROJECT_ROOT/.env" "$PROJECT_ROOT/data/env/env"
+ok "Container environment synced"
+
 # ── Step 7: Service setup ──────────────────────────────────────────────────
 
 info "Setting up background service..."
 npx tsx setup/index.ts --step service 2>&1 | grep -v "^===" || true
 ok "Service configured"
+
+# ── Step 7b: Fix launchd PATH for Homebrew (macOS) ────────────────────────
+
+if [ "$(uname -s)" = "Darwin" ]; then
+  PLIST="$HOME/Library/LaunchAgents/com.nanoclaw.plist"
+  if [ -f "$PLIST" ]; then
+    # Ensure /opt/homebrew/bin is in PATH so podman/docker can be found
+    if ! grep -q "/opt/homebrew/bin" "$PLIST"; then
+      info "Adding /opt/homebrew/bin to launchd PATH..."
+      sed -i '' 's|<string>/usr/local/bin:|<string>/opt/homebrew/bin:/usr/local/bin:|' "$PLIST"
+      ok "launchd PATH updated"
+    else
+      ok "launchd PATH already includes /opt/homebrew/bin"
+    fi
+  fi
+fi
 
 # ── Done ────────────────────────────────────────────────────────────────────
 
@@ -403,6 +501,7 @@ launch_shell() {
   fi
 
   $RUNTIME run -it --rm \
+    --name N184_Honore \
     "${MOUNT_ARGS[@]}" \
     "${ENV_ARGS[@]}" \
     -e "ASSISTANT_NAME=$ASSISTANT_NAME" \
