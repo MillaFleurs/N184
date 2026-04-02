@@ -25,8 +25,10 @@ else
   # Not in NanoClaw directory - need to clone it
   echo "NanoClaw not found. Cloning from $NANOCLAW_REPO_URL..."
 
-  # Clone to ./nanoclaw relative to where init.sh was run
-  if [ ! -d "nanoclaw" ]; then
+  # Clone to ./nanoclaw relative to where init.sh was run.
+  # Check for package.json (not just the directory) to detect broken partial clones.
+  if [ ! -f "nanoclaw/package.json" ]; then
+    rm -rf nanoclaw
     if ! git clone "$NANOCLAW_REPO_URL" nanoclaw; then
       echo "Failed to clone NanoClaw repository."
       echo "Make sure you have access to: $NANOCLAW_REPO_URL"
@@ -181,11 +183,13 @@ if [ "$NEEDS_CLEAN" = true ]; then
 
   info "Cleaning previous state..."
 
-  # Stop service if running
+  # Stop service and clear launchd/systemd state to avoid stale process issues
   if [ "$(uname -s)" = "Darwin" ]; then
+    launchctl bootout "gui/$(id -u)/com.nanoclaw" 2>/dev/null || true
     launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist 2>/dev/null || true
   else
     systemctl --user stop nanoclaw 2>/dev/null || true
+    systemctl --user reset-failed nanoclaw 2>/dev/null || true
   fi
 
   # Kill orphaned containers
@@ -203,7 +207,11 @@ fi
 # ── Step 1: Install dependencies ────────────────────────────────────────────
 
 info "Installing npm dependencies..."
-npm ci --silent 2>&1 | tail -1 || fail "npm ci failed. Check logs."
+if [ -f "$PROJECT_ROOT/package-lock.json" ]; then
+  npm ci --silent 2>&1 | tail -1 || fail "npm ci failed. Check logs."
+else
+  npm install --silent 2>&1 | tail -1 || fail "npm install failed. Check logs."
+fi
 
 # Verify native module
 if ! node -e "require('better-sqlite3')" 2>/dev/null; then
@@ -211,33 +219,9 @@ if ! node -e "require('better-sqlite3')" 2>/dev/null; then
 fi
 ok "Dependencies installed"
 
-# ── Step 1b: Patch container-runtime.ts to read CONTAINER_RUNTIME from .env ─
-
-CONTAINER_RUNTIME_TS="$PROJECT_ROOT/src/container-runtime.ts"
-if [ -f "$CONTAINER_RUNTIME_TS" ]; then
-  # Replace the hardcoded 'docker' default with env-aware lookup via readEnvFile.
-  # This lets the .env CONTAINER_RUNTIME value (e.g. podman) take effect at runtime
-  # without brittle sed replacement of the binary name.
-  if grep -q "^export const CONTAINER_RUNTIME_BIN = 'docker'" "$CONTAINER_RUNTIME_TS"; then
-    info "Patching container-runtime.ts to read CONTAINER_RUNTIME from .env..."
-    # Add the readEnvFile import if not already present
-    if ! grep -q "readEnvFile" "$CONTAINER_RUNTIME_TS"; then
-      sed -i '' "/import { logger } from '.\/logger.js';/i\\
-import { readEnvFile } from './env.js';
-" "$CONTAINER_RUNTIME_TS"
-    fi
-    # Replace the hardcoded constant with env-aware lookup
-    sed -i '' "s|^export const CONTAINER_RUNTIME_BIN = 'docker';|const _envRT = readEnvFile(['CONTAINER_RUNTIME']);\\
-export const CONTAINER_RUNTIME_BIN = process.env.CONTAINER_RUNTIME || _envRT.CONTAINER_RUNTIME || 'docker';|" "$CONTAINER_RUNTIME_TS"
-    ok "Container runtime reads from .env CONTAINER_RUNTIME (detected: $RUNTIME)"
-  else
-    ok "Container runtime already patched"
-  fi
-else
-  warn "src/container-runtime.ts not found — skipping runtime patch"
-fi
-
-# ── Step 1c: Install Telegram channel ──────────────────────────────────────
+# ── Step 1b: Install Telegram channel ─────────────────────────────────────
+# Merges must happen BEFORE patching source files, otherwise git merge
+# can overwrite or conflict with our local patches.
 
 if [ ! -f "$PROJECT_ROOT/src/channels/telegram.ts" ]; then
   info "Installing Telegram channel skill..."
@@ -259,6 +243,32 @@ if [ ! -f "$PROJECT_ROOT/src/channels/telegram.ts" ]; then
   ok "Telegram dependencies installed"
 else
   ok "Telegram channel already installed"
+fi
+
+# ── Step 1c: Patch container runtime to use absolute path ────────────────
+# Done AFTER all git merges so the patch isn't overwritten.
+
+CONTAINER_RUNTIME_TS="$PROJECT_ROOT/src/container-runtime.ts"
+if [ -f "$CONTAINER_RUNTIME_TS" ]; then
+  if grep -q "^export const CONTAINER_RUNTIME_BIN = 'docker'" "$CONTAINER_RUNTIME_TS"; then
+    # Resolve the full absolute path to the runtime binary so it works
+    # under launchd/systemd where PATH may not include the runtime's directory.
+    RUNTIME_PATH="$(which "$RUNTIME")"
+    info "Patching container-runtime.ts to use $RUNTIME_PATH..."
+    awk -v rpath="$RUNTIME_PATH" '{
+      if ($0 ~ /^export const CONTAINER_RUNTIME_BIN = '"'"'docker'"'"'/) {
+        print "export const CONTAINER_RUNTIME_BIN = '"'"'" rpath "'"'"';"
+      } else {
+        print $0
+      }
+    }' "$CONTAINER_RUNTIME_TS" > "${CONTAINER_RUNTIME_TS}.tmp" \
+      && mv "${CONTAINER_RUNTIME_TS}.tmp" "$CONTAINER_RUNTIME_TS"
+    ok "Container runtime set to $RUNTIME_PATH"
+  else
+    ok "Container runtime already patched"
+  fi
+else
+  warn "src/container-runtime.ts not found — skipping runtime patch"
 fi
 
 # ── Step 2: Build TypeScript ────────────────────────────────────────────────
@@ -293,32 +303,32 @@ else
   done
 fi
 
-# Run the container with a name so the watchdog can kill it reliably.
-# Use timeout(1) to cap the entire pipeline — this avoids the hang where
-# killing the shell PID leaves the container process running.
-if command -v timeout >/dev/null 2>&1; then
-  TIMEOUT_CMD="timeout $CONTAINER_TIMEOUT"
-elif command -v gtimeout >/dev/null 2>&1; then
-  TIMEOUT_CMD="gtimeout $CONTAINER_TIMEOUT"
-else
-  TIMEOUT_CMD=""
-fi
+# Run the container in the background with a watchdog that kills it after
+# CONTAINER_TIMEOUT seconds.  Uses the named container so we can stop it
+# reliably via the runtime — works on macOS without coreutils timeout.
+echo '{"prompt":"Say hello","groupFolder":"test","chatJid":"test@init","isMain":false}' | \
+  $RUNTIME run -i --rm --name "$TEST_CONTAINER_NAME" "${CRED_ARGS[@]}" \
+  nanoclaw-agent:latest >"$TEST_TMPFILE" 2>/dev/null &
+TEST_PID=$!
 
-$TIMEOUT_CMD sh -c \
-  'echo '"'"'{"prompt":"Say hello","groupFolder":"test","chatJid":"test@init","isMain":false}'"'"' | \
-   '"$RUNTIME"' run -i --rm --name '"$TEST_CONTAINER_NAME"' '"$(printf '%q ' "${CRED_ARGS[@]}")"' nanoclaw-agent:latest' \
-  >"$TEST_TMPFILE" 2>/dev/null
-TEST_EXIT=$?
+# Watchdog: kill the container after timeout
+( sleep "$CONTAINER_TIMEOUT" && $RUNTIME stop -t 1 "$TEST_CONTAINER_NAME" 2>/dev/null ) &
+WATCHDOG_PID=$!
 
-# Clean up container in case timeout killed the shell but left it running
-$RUNTIME stop -t 1 "$TEST_CONTAINER_NAME" 2>/dev/null || true
-$RUNTIME rm "$TEST_CONTAINER_NAME" 2>/dev/null || true
+wait "$TEST_PID" 2>/dev/null && TEST_EXIT=0 || TEST_EXIT=$?
+
+# Kill watchdog if container finished before timeout
+kill "$WATCHDOG_PID" 2>/dev/null || true
+wait "$WATCHDOG_PID" 2>/dev/null || true
+
+# Clean up container in case it's still around
+$RUNTIME rm -f "$TEST_CONTAINER_NAME" 2>/dev/null || true
 
 TEST_OUTPUT=$(cat "$TEST_TMPFILE")
 rm -f "$TEST_TMPFILE"
 if echo "$TEST_OUTPUT" | grep -q "NANOCLAW_OUTPUT"; then
   ok "Container runs successfully"
-elif [ "$TEST_EXIT" -eq 124 ] || [ "$TEST_EXIT" -eq 137 ] || [ -z "$TEST_OUTPUT" ]; then
+elif [ "$TEST_EXIT" -eq 137 ] || [ -z "$TEST_OUTPUT" ]; then
   warn "Container test timed out after ${CONTAINER_TIMEOUT}s (check credentials and network)"
 else
   warn "Container test didn't produce expected output (may need credentials)"
@@ -414,25 +424,84 @@ mkdir -p "$PROJECT_ROOT/data/env"
 cp "$PROJECT_ROOT/.env" "$PROJECT_ROOT/data/env/env"
 ok "Container environment synced"
 
-# ── Step 7: Service setup ──────────────────────────────────────────────────
+# ── Step 7: Generate launcher wrapper ─────────────────────────────────────
+# Create a wrapper script that sets up PATH before launching node.
+# This is more portable than patching plist/systemd PATH values directly —
+# it survives plist regeneration and works on any init system.
+
+LAUNCHER="$PROJECT_ROOT/run.sh"
+NODE_PATH="$(which node)"
+RUNTIME_DIR="$(dirname "$(which "$RUNTIME")")"
+NODE_DIR="$(dirname "$NODE_PATH")"
+
+info "Generating launcher wrapper (run.sh)..."
+cat > "$LAUNCHER" << LAUNCHER_EOF
+#!/bin/bash
+# Auto-generated by init.sh — ensures PATH includes runtime and node directories
+# so the service works under launchd/systemd where PATH is minimal.
+export PATH="$RUNTIME_DIR:$NODE_DIR:/usr/local/bin:/usr/bin:/bin:\$PATH"
+exec "$NODE_PATH" "$PROJECT_ROOT/dist/index.js" "\$@"
+LAUNCHER_EOF
+chmod +x "$LAUNCHER"
+ok "Launcher wrapper created (run.sh)"
+
+# ── Step 7b: Service setup ────────────────────────────────────────────────
 
 info "Setting up background service..."
 npx tsx setup/index.ts --step service 2>&1 | grep -v "^===" || true
 ok "Service configured"
 
-# ── Step 7b: Fix launchd PATH for Homebrew (macOS) ────────────────────────
+# ── Step 7c: Point service at launcher wrapper ───────────────────────────
 
 if [ "$(uname -s)" = "Darwin" ]; then
   PLIST="$HOME/Library/LaunchAgents/com.nanoclaw.plist"
   if [ -f "$PLIST" ]; then
-    # Ensure /opt/homebrew/bin is in PATH so podman/docker can be found
-    if ! grep -q "/opt/homebrew/bin" "$PLIST"; then
-      info "Adding /opt/homebrew/bin to launchd PATH..."
-      sed -i '' 's|<string>/usr/local/bin:|<string>/opt/homebrew/bin:/usr/local/bin:|' "$PLIST"
-      ok "launchd PATH updated"
+    # Replace the ProgramArguments to use run.sh instead of calling node directly.
+    # This ensures the service always has the right PATH regardless of what
+    # the setup step generates.
+    if ! grep -q "run.sh" "$PLIST"; then
+      info "Pointing launchd service at run.sh wrapper..."
+      sed -i '' "s|<string>${NODE_PATH}</string>|<string>${LAUNCHER}</string>|" "$PLIST"
+      # Remove the node args line (dist/index.js) — run.sh handles it
+      sed -i '' "\\|<string>${PROJECT_ROOT}/dist/index.js</string>|d" "$PLIST"
+      ok "launchd plist updated to use run.sh"
     else
-      ok "launchd PATH already includes /opt/homebrew/bin"
+      ok "launchd plist already uses run.sh"
     fi
+  fi
+else
+  # Linux systemd — update ExecStart if present
+  UNIT="$HOME/.config/systemd/user/nanoclaw.service"
+  if [ -f "$UNIT" ]; then
+    if ! grep -q "run.sh" "$UNIT"; then
+      info "Pointing systemd service at run.sh wrapper..."
+      sed -i "s|ExecStart=.*|ExecStart=${LAUNCHER}|" "$UNIT"
+      systemctl --user daemon-reload 2>/dev/null || true
+      ok "systemd unit updated to use run.sh"
+    else
+      ok "systemd unit already uses run.sh"
+    fi
+  fi
+fi
+
+# ── Step 8: Start service ─────────────────────────────────────────────────
+# Clean reload to avoid stale launchd/systemd state from previous runs.
+
+info "Starting service..."
+if [ "$(uname -s)" = "Darwin" ]; then
+  PLIST="$HOME/Library/LaunchAgents/com.nanoclaw.plist"
+  if [ -f "$PLIST" ]; then
+    launchctl bootout "gui/$(id -u)/com.nanoclaw" 2>/dev/null || true
+    launchctl unload "$PLIST" 2>/dev/null || true
+    launchctl load "$PLIST" 2>/dev/null || true
+    ok "launchd service loaded"
+  fi
+else
+  UNIT="$HOME/.config/systemd/user/nanoclaw.service"
+  if [ -f "$UNIT" ]; then
+    systemctl --user daemon-reload 2>/dev/null || true
+    systemctl --user restart nanoclaw 2>/dev/null || true
+    ok "systemd service restarted"
   fi
 fi
 
