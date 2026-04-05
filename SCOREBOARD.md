@@ -29,7 +29,7 @@ Track record of verified security vulnerabilities and bugs discovered using N184
 
 ---
 
-## Projects
+## Projects Reviewed
 
 ### 1. Apple MLX (Machine Learning Framework)
 
