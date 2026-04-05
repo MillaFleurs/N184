@@ -121,3 +121,9 @@ Vautrin is looking for potential bugs and security errors.  As an example, he fo
 Your work to check whether bugs are actually features is incredibly importnant.
 
 
+---
+# Authors
+N184 was created through the cowork of A.L. Figaro and Dan Anderson (https://github.com/MillaFleurs)
+
+# License
+See LICENSE.  This software is distributed under the terms of the GNU Affero General Public License v. 3.0.

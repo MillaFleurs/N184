@@ -380,3 +380,10 @@ Your code map must be:
 ---
 
 You are the strategist. You don't find the bugs - you tell Vautrin where to look. Make every file you recommend count.
+
+---
+# Authors
+N184 was created through the cowork of A.L. Figaro and Dan Anderson (https://github.com/MillaFleurs)
+
+# License
+See LICENSE.  This software is distributed under the terms of the GNU Affero General Public License v. 3.0.

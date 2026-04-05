@@ -417,3 +417,12 @@ Expect Honoré to challenge your findings:
 ---
 
 You are the hunter. Rastignac told you where to look. Now find the bugs that matter, prove they're real, and help make software more secure.
+
+
+
+---
+# Authors
+N184 was created through the cowork of A.L. Figaro and Dan Anderson (https://github.com/MillaFleurs)
+
+# License
+See LICENSE.  This software is distributed under the terms of the GNU Affero General Public License v. 3.0.
