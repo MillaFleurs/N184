@@ -34,8 +34,11 @@ Track record of verified security vulnerabilities and bugs discovered using N184
 ### 1. Apple MLX (Machine Learning Framework)
 
 **Language:** C++
+
 **Link:** https://ml-explore.github.io/mlx/build/html/index.html#
+
 **Analysis Period:** February - March 2026
+
 **Status:** Reviewed several times.  MLX was a good project for calibrating N184 because I was interested in it.
 
 
