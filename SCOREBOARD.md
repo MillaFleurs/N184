@@ -7,7 +7,7 @@ Track record of verified security vulnerabilities and bugs discovered using N184
 ## Summary Statistics
 
 **Total Projects Analyzed:** 1
-**Total Bugs Found:** 6
+**Total Bugs Fixed:** 9
 
 ---
 
