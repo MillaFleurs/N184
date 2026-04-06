@@ -2,9 +2,13 @@
 
 Below are some frequently asked questions about N184.
 
+## How do I get started?
+
+Check out the README.md.  It has quick start instructions.
+
 ## What is N184?
 
-N184 is an open source, advanced linting tool that allows users to scan code bases for both bugs and vulnerabilities.  It's designed to use the pattern matching capabilities of LLMs in an ensemble learning model.
+N184 is an open-source code review and vulnerability discovery framework that uses multiple models and validation strategies to surface likely bugs and security issues.
 
 ## So it's a magic wand for hackers?
 
@@ -12,7 +16,7 @@ N184 is an open source, advanced linting tool that allows users to scan code bas
 
 ## But couldn't I google things in the bug report and figure it out?
 
-That's called learning.  In our experience, poking around unknown code bases is an excellent way to learn a language yourself (and more interesting than reading a list of control flow commands).
+Learning from bug reports is part of becoming a better engineer or security researcher, and reading code is a great way to learn how to code. But N184 still assumes technical judgment, responsible use, and manual validation before any finding is acted on.
 
 ## Will all N184 instances find the same bugs?
 
