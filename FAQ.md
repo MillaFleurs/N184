@@ -22,7 +22,7 @@ N184, like many LLM based software applications, will learn from its experiences
 
 Because we believe in open source and because everyone deserves secure, bug free software.
 
-## Why ensemble methods? Why not just use Claude Opus or GPT-5?**
+## Why ensemble methods? Why not just use Claude Opus or GPT-5?
 
 Single models hallucinate. They flag sudo as a vulnerability and panic about documented features. Ensemble consensus (2/3 voting threshold) filters false positives while preserving real findings. The math is proven in spam filters and credit scoring.
 
