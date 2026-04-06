@@ -52,7 +52,7 @@ Technically yes.  The amount of useful bug reports you receive will of course be
 
 At a Minimum: Anthropic (Claude). 
 
-Our of the box we support Anthropic + OpenAI + DeepSeek for true multi-model consensus. 
+Out of the box we support Anthropic + OpenAI + DeepSeek for true multi-model consensus. 
 
 Other models may be supported by default in the future or can be supported if you invoke ```claude``` in your N184 base directory and ask it to add new models.
 
