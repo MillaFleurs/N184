@@ -46,7 +46,7 @@ We've successfully audited targets from 50K lines (MLX components) to 2M+ lines 
 
 ## Can I just point N184 at any codebase?
 
-Technically yes.  The amount of useful bug reports you receive will of course be proportional to factors like how well written a code base is.  For fun we ran N184 over OpenBSD and it what may be a first for Artificial Intelligence, it had nothing but compliments for the codebase.  To be honest, we never could have predicted the way Honoré would act like a fan boi reviewing the OpenBSD codebase.
+Technically yes.  The amount of useful bug reports you receive will of course be proportional to factors like how well written a code base is.  For fun we ran N184 over OpenBSD and in what may be a first for Artificial Intelligence, it had nothing but compliments for the codebase.  To be honest, we never could have predicted the way Honoré would act like a fan boi reviewing the OpenBSD codebase.
 
 ## Which LLM providers do I need?
 
