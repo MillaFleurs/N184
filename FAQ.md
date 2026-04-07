@@ -28,6 +28,10 @@ N184, like many LLM based software applications, will learn from its experiences
 
 Because we believe in open source and because everyone deserves secure, bug free software.
 
+## How accurate is N184?
+
+Ensemble voting significantly reduces false positives compared to single-model analysis. In our testing, findings that pass 2/3 consensus threshold have high validation rates when reviewed by experienced security researchers. However, accuracy depends on target codebase maturity, your validation expertise, and your instance's learned patterns. N184 is a force multiplier, not a replacement for human judgment.
+
 ## Why ensemble methods? Why not just use Claude Opus or GPT-5?
 
 Single models hallucinate. They flag sudo as a vulnerability and panic about documented features. Ensemble consensus (2/3 voting threshold) filters false positives while preserving real findings. The math is proven in spam filters and credit scoring.
@@ -49,6 +53,14 @@ Three ways:
 ## What size codebases can N184 handle?
 
 We've successfully audited targets from 50K lines (MLX components) to 2M+ lines (GitLab CE). Larger targets consume more API budget and time. 
+
+## What does this cost to run?
+
+Highly variable depending on codebase size, complexity, and how deep the analysis goes. We've seen runs from under $10 to $100+ in API costs for a single audit. Some factors that increase cost: larger codebases, deeper git history analysis, more complex security patterns, ensemble voting across multiple models. Best practice: set API spending limits in your provider accounts and monitor usage during your first few runs to understand your typical costs.
+
+Additionally, you don't have to run everything through Claude Opus.  You can ask Honoré to use lower cost agents for the swarm. 
+
+Your best bet is to start small to get a feel what actual cost will be.
 
 ## Can I just point N184 at any codebase?
 
