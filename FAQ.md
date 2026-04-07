@@ -6,13 +6,15 @@ Below are some frequently asked questions about N184.
 
 Check out the README.md.  It has quick start instructions.
 
+Essentially you clone our repository, ensure you have dependencies like Python, Podman, and Claude, edit the .env file using .env.example as a template to include your API tokens, and then let it rip with ```./init.sh```.  Honoré does the rest.
+
 ## What is N184?
 
 N184 is an open-source code review and vulnerability discovery framework that uses multiple models and validation strategies to surface likely bugs and security issues.
 
 ## So it's a magic wand for hackers?
 
-**No.**  The various techniques we use to identify bugs still require a knowledgable Human in the Loop.  After generating a series of bug reports, someone with sufficient technical expertise still needs to confirm findings and craft the PR and submission.  As an example, if you don't know any C++ you are unlikely to be able to do anything useful with a bug report on a C++ Codebase.
+**No.**  The various techniques we use to identify bugs still require a knowledgeable Human in the Loop.  After generating a series of bug reports, someone with sufficient technical expertise still needs to confirm findings and craft the PR and submission.  As an example, if you don't know any C++ you are unlikely to be able to do anything useful with a bug report on a C++ Codebase.
 
 ## But couldn't I google things in the bug report and figure it out?
 
