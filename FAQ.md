@@ -74,10 +74,6 @@ Out of the box we support Anthropic + OpenAI + DeepSeek for true multi-model con
 
 Other models may be supported by default in the future or can be supported if you invoke ```claude``` in your N184 base directory and ask it to add new models.
 
-## What does this cost to run?
-
-Depends on a number of factors including size of code base, complexity, and models run.  Your best bet is to monitor usage.
-
 ## Can I run this locally or air-gapped?
 
 Out of the box we require an Anthropic subscription for NanoClaw.  *However* there is no reason you couldn't set this up to run against an on premises model, although it might take some work.  If you do, please contribute your changes back to us at github.
