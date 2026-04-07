@@ -6,9 +6,9 @@ Track record of verified security vulnerabilities and bugs discovered using N184
 
 ## Summary Statistics
 
-**Total Projects Analyzed:** 2
+**Total Projects Analyzed:** 3
 
-**Total Bugs Found:** 10
+**Total Bugs Found:** 11
 
 **Total Bugs Fixed:** 9
 
@@ -40,6 +40,7 @@ This list is not exhaustive. Bugs covered by NDA or those deemed particularly se
 | 8 | MLX | Fix Seg Fault | [PR #3008](https://github.com/ml-explore/mlx/pull/3008) | Fixed |
 | 9 | MLX | Fix RandomBits::is_equivalent to include width | [PR #2978](https://github.com/ml-explore/mlx/pull/2978) | Fixed |
 | 10 | httpd | ap_normalize_path bug allows for supply chain poisoning | [Bug 69994](https://bz.apache.org/bugzilla/show_bug.cgi?id=69994) | Confirmed |
+| 11 | docker cli | Path confinement for secrets.file and configs.file in stack deploy  | https://github.com/docker/cli/issues/6919 | Confirmed by Docker Security |
 
 ---
 
@@ -54,6 +55,28 @@ This list is not exhaustive. Bugs covered by NDA or those deemed particularly se
 **Analysis Period:** February - March 2026
 
 **Status:** Reviewed several times.  MLX was a good project for calibrating N184 because I was interested in it.
+
+### 2. Apache httpd
+
+**Language:** C++
+
+**Link:** [https://ml-explore.github.io/mlx/build/html/index.html#](https://httpd.apache.org/bug_report.html)
+
+**Analysis Period:** March 2026
+
+**Status:** Found one path traversal bug that was fixed as part of defense in depth.
+
+
+### 3. Docker
+
+**Language:** Go
+
+**Link:** [https://ml-explore.github.io/mlx/build/html/index.html#](https://github.com/docker)
+
+**Analysis Period:** April 2026
+
+**Status:** Reviewed as part of bug hunting prior to v. 1.0 kick off.
+
 
 
 ---
