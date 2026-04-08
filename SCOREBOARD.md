@@ -42,6 +42,12 @@ This list is not exhaustive. Bugs covered by NDA or those deemed particularly se
 | 10 | httpd | ap_normalize_path bug allows for supply chain poisoning | [Bug 69994](https://bz.apache.org/bugzilla/show_bug.cgi?id=69994) | Confirmed |
 | 11 | docker cli | Path confinement for secrets.file and configs.file in stack deploy  | https://github.com/docker/cli/issues/6919 | Confirmed by Docker Security |
 | 12 | MLX | Prevent out-of-bounds memory access caused by corrupt tensor.ndim in gguf file | https://github.com/ml-explore/mlx/pull/3359 | Confirmed | 
+| 13 | MLX | SafeTensors data_offsets Not Validated | https://github.com/ml-explore/mlx/issues/3363 | Confirmed |
+
+Status Explanation:
+
+**Fixed** Means PR has been accepted and merged into the codebase
+**Confirmed** Means maintainers or organizations have accepted the bug exists and needs to be fixed.  
 
 ---
 
