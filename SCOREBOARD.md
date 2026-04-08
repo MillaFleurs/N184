@@ -8,9 +8,9 @@ Track record of verified security vulnerabilities and bugs discovered using N184
 
 **Total Projects Analyzed:** 3
 
-**Total Bugs Found:** 11
+**Total Bugs Found:** 12
 
-**Total Bugs Fixed:** 9
+**Total Bugs Fixed:** 10
 
 
 **Note on Ethical Disclosure:** 
@@ -41,6 +41,7 @@ This list is not exhaustive. Bugs covered by NDA or those deemed particularly se
 | 9 | MLX | Fix RandomBits::is_equivalent to include width | [PR #2978](https://github.com/ml-explore/mlx/pull/2978) | Fixed |
 | 10 | httpd | ap_normalize_path bug allows for supply chain poisoning | [Bug 69994](https://bz.apache.org/bugzilla/show_bug.cgi?id=69994) | Confirmed |
 | 11 | docker cli | Path confinement for secrets.file and configs.file in stack deploy  | https://github.com/docker/cli/issues/6919 | Confirmed by Docker Security |
+| 12 | MLX | Prevent out-of-bounds memory access caused by corrupt tensor.ndim in gguf file | https://github.com/ml-explore/mlx/pull/3359 | Confirmed | 
 
 ---
 
