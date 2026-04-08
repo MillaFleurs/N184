@@ -6,7 +6,7 @@ Track record of verified security vulnerabilities and bugs discovered using N184
 
 ## Summary Statistics
 
-**Total Projects Analyzed:** 3
+**Total Projects Analyzed:** 4
 
 **Total Bugs Found:** 12
 
@@ -43,6 +43,8 @@ This list is not exhaustive. Bugs covered by NDA or those deemed particularly se
 | 11 | docker cli | Path confinement for secrets.file and configs.file in stack deploy  | https://github.com/docker/cli/issues/6919 | Confirmed by Docker Security |
 | 12 | MLX | Prevent out-of-bounds memory access caused by corrupt tensor.ndim in gguf file | https://github.com/ml-explore/mlx/pull/3359 | Confirmed | 
 | 13 | MLX | SafeTensors data_offsets Not Validated | https://github.com/ml-explore/mlx/issues/3363 | Confirmed |
+| 14 | Clickhouse | Interserver Mode Entered Before Secret Hash Verified | https://github.com/ClickHouse/ClickHouse/issues/99512 | Confirmed |
+| 15 | 
 
 Status Explanation:
 
@@ -73,7 +75,6 @@ Status Explanation:
 
 **Status:** Found one path traversal bug that was fixed as part of defense in depth.
 
-
 ### 3. Docker
 
 **Language:** Go
@@ -84,9 +85,17 @@ Status Explanation:
 
 **Status:** Reviewed as part of bug hunting prior to v. 1.0 kick off.
 
+### 4. Clickhouse
 
+**Language:** C++
+
+**Link:** https://github.com/ClickHouse/ClickHouse
+
+**Analysis Period:** March 2026 & April 2026
+
+**Status:** Review ongoing.
 
 ---
-**Last Updated:** April 5, 2026
+**Last Updated:** April 7, 2026
 **Maintained By:** Dan Anderson & A.L. Figaro
 **N184 Repository:** https://github.com/MillaFleurs/N184
