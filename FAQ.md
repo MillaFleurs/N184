@@ -68,6 +68,10 @@ Your best bet is to start small to get a feel what actual cost will be.
 
 Technically, yes.  The amount of useful bug reports you receive will of course be proportional to factors like how well written a code base is.  For fun we ran N184 over OpenBSD and in what may be a first for Artificial Intelligence, it had nothing but compliments for the codebase.  To be honest, we never could have predicted the way Honoré would act like a fan boi reviewing the OpenBSD codebase.
 
+To our surprise, after a day of analysis and $100 in API costs (literally 1/3 the development costs) it came back with four bugs, two of which I was delighted to say were confirmed and fixed by the authors of the most secure operating system ever.
+
+While that felt like a major accomplishment, it's a perfect example of the parameters of using N184.  The more code and the more robust the code base, the more effort you'll need to find anything.  And it's entirely possible you won't find anything except a hole in your wallet.
+
 ## Which LLM providers do I need?
 
 At a Minimum: Anthropic (Claude). 
@@ -151,7 +155,7 @@ The main push for v. 1.0 was to organize my verious experiments in agentic bug s
 
 The roadmap is, roughly:
 
-1. Provide a formal pattern database mechanism.  Right now my N184 agent learns from its own research, and interaction with me.  But ideally anyone running N184 should be able to update to the most recent definition file.
+1. Formal pattern database with automated maintenance. Right now each N184 instance learns independently from its findings. v1.1 will add AI-curated pattern extraction, cross-language translation, and a standardized format for sharing patterns between instances.
 2. Provide access to local LLMs run via [MLX](https://opensource.apple.com/projects/mlx/)
 3. Give each agent their own docker container or pod to make it easier to see what's going on.
 4. Find more bugs
