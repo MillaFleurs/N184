@@ -118,6 +118,22 @@ Context changes things.
 
 See above answer.  We can't quantify the false positive rate until everyone agrees what a true positive is.
 
+##  Why are the agents named after Balzac characters?
+
+"Vautrin found it but Goriot rejected it" is easier to debug at midnight than "Agent-001 found it but Agent-004 rejected it." Good naming is a design decision. See the La Comédie Agentique blog post for details.
+
+## How do you compare to Glasswing
+
+Oh boy.  After six months of messing around with agentic swarms, and hours after formally announcing N184 to the world, Anthropic announced [Glasswing](https://www.anthropic.com/glasswing), their initiative to help find and secure software.
+
+It's pretty cool.  It also cost $100,000,000
+
+I built this for $300 in API credits, some Nespresso pods, and some lost sleep.
+
+I'm really proud of what I built.  And I don't think you should need that much money for your software to be stable and bug free.  
+
+Glasswing and N184 are extreme examples of *convergent evolution*.  Birds grew feathers from their arms.  Bats grew skin flaps between their fingers.  Both use them to fly.  And one didn't in any way depend on the other.
+
 ## How can I contribute?
 
 1. Submit PRs improving agent prompts, adding new validation checks, or addressing open issues.
@@ -128,9 +144,6 @@ See above answer.  We can't quantify the false positive rate until everyone agre
 6. Consider contributing monetarily if you can't contribute time.
 7. Anything you can imagine that would help the project
 
-##  Why are the agents named after Balzac characters?
-
-"Vautrin found it but Goriot rejected it" is easier to debug at midnight than "Agent-001 found it but Agent-004 rejected it." Good naming is a design decision. See the La Comédie Agentique blog post for details.
 
 ## What's coming next?
 
