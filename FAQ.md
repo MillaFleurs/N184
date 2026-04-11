@@ -16,7 +16,9 @@ N184 is an open-source code review and vulnerability discovery framework that us
 
 **No.**  The various techniques we use to identify bugs still require a knowledgeable Human in the Loop.  After generating a series of bug reports, someone with sufficient technical expertise still needs to confirm findings and craft the PR and submission.  As an example, if you don't know any C++ you are unlikely to be able to do anything useful with a bug report on a C++ Codebase.
 
-## But couldn't I google things in the bug report and figure it out?
+We also are looking for all bugs not just security vulnerabilities.  We imagine a world where software is by default stable, and not as the exception.
+
+## Can I google things in the bug report and figure it out?
 
 Learning from bug reports is part of becoming a better engineer or security researcher, and reading code is a great way to learn how to code. But N184 still assumes technical judgment, responsible use, and manual validation before any finding is acted on.
 
@@ -64,7 +66,7 @@ Your best bet is to start small to get a feel what actual cost will be.
 
 ## Can I just point N184 at any codebase?
 
-Technically yes.  The amount of useful bug reports you receive will of course be proportional to factors like how well written a code base is.  For fun we ran N184 over OpenBSD and in what may be a first for Artificial Intelligence, it had nothing but compliments for the codebase.  To be honest, we never could have predicted the way Honoré would act like a fan boi reviewing the OpenBSD codebase.
+Technically, yes.  The amount of useful bug reports you receive will of course be proportional to factors like how well written a code base is.  For fun we ran N184 over OpenBSD and in what may be a first for Artificial Intelligence, it had nothing but compliments for the codebase.  To be honest, we never could have predicted the way Honoré would act like a fan boi reviewing the OpenBSD codebase.
 
 ## Which LLM providers do I need?
 
@@ -78,13 +80,43 @@ Other models may be supported by default in the future or can be supported if yo
 
 Out of the box we require an Anthropic subscription for NanoClaw.  *However* there is no reason you couldn't set this up to run against an on premises model, although it might take some work.  If you do, please contribute your changes back to us at github.
 
+That is currently on our to do list and will hopefully be in a future release.  We're big fans of Apple Silicon's unified architecture and are currently working on implementing an [MLX](https://opensource.apple.com/projects/mlx/) backend.
+
 ## What's your disclosure policy?
 
 Responsible disclosure: private notification to maintainers, 90-day fix window (or coordinated timeline), public disclosure only after fix or authorization. See SCOREBOARD.md for disclosed findings.
 
 ## So you have findings that you haven't (yet) disclosed?
 
-Yes, and it will stay that way until it has been determined that the vulnerability has been patched or public disclosure has been authorized.
+Yes, and it will stay that way until one of the following happens:
+
+1.  The vulnerability has been patched.
+2.  Public disclosure is authorized by the owners of the codebase
+3.  It is determined that it is not dangerous to disclose.  (i.e. it's a bug not a vulnerability)
+
+## So what's the difference between bugs, vulnerabilities, and false positives?  How do you know which is which?
+
+**Short answer:** Ask the maintainers of the codebase.
+
+**Longer answer:** What philosophical school do you belong to?
+
+It really depends.
+
+We have reported some bugs that look bad to us.  As an example, we found what we thought was a very effective compression bomb, and we were told by the maintainers, quoting almost verbatim, "This is not an issue because users run the service locally and this wouldn't be an attacker but intentional misbehavior from the computer owner."
+
+We have known how to write secure and bug free software for a long time.  
+
+The problem is the priority of the maintainers.
+
+A bank will spend a lot of effort making sure you can't access their vault.
+
+A public repository **wants** you to have access.
+
+Context changes things.
+
+## So what's your false positive rate?
+
+See above answer.  We can't quantify the false positive rate until everyone agrees what a true positive is.
 
 ## How can I contribute?
 
