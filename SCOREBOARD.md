@@ -45,7 +45,7 @@ This list is not exhaustive. Bugs covered by NDA or those deemed particularly se
 | 13 | MLX | SafeTensors data_offsets Not Validated | https://github.com/ml-explore/mlx/issues/3363 | Confirmed |
 | 14 | Clickhouse | Interserver Mode Entered Before Secret Hash Verified | https://github.com/ClickHouse/ClickHouse/issues/99512 | Confirmed |
 | 15 | OpenBSD | rpki-client: fix pointer used in as_check_overlap() | https://github.com/openbsd/src/commit/566debf87d661c2ed816de66da56b8d23eb76465 | Fixed |
-| 16 | OpenBSD | At the end of parsing the http response header do some sanity checks | https://github.com/openbsd/src/commit/f97bb3898e4d5eef036c382a0c37dcd75c914318 |
+| 16 | OpenBSD | At the end of parsing the http response header do some sanity checks | https://github.com/openbsd/src/commit/f97bb3898e4d5eef036c382a0c37dcd75c914318 | Fixed |
 
 Status Explanation:
 
