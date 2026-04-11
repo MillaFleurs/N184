@@ -131,3 +131,19 @@ See above answer.  We can't quantify the false positive rate until everyone agre
 ##  Why are the agents named after Balzac characters?
 
 "Vautrin found it but Goriot rejected it" is easier to debug at midnight than "Agent-001 found it but Agent-004 rejected it." Good naming is a design decision. See the La Comédie Agentique blog post for details.
+
+## What's coming next?
+
+The main push for v. 1.0 was to organize my verious experiments in agentic bug searching into something portable.  Right now, that means we really just have a wrapper around NanoClaw, providing a set of standard instructions as to what NanoClaw shoudl do.  That's useful, and extremely helpful.  **But there's more**
+
+The roadmap is, roughly:
+
+1. Provide a formal pattern database mechanism.  Right now my N184 agent learns from its own research, and interaction with me.  But ideally anyone running N184 should be able to update to the most recent definition file.
+2. Provide access to local LLMs run via [MLX](https://opensource.apple.com/projects/mlx/)
+3. Give each agent their own docker container or pod to make it easier to see what's going on.
+4. Find more bugs
+5. Squash those bugs
+6. ???
+7. Happiness.
+
+
