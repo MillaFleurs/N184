@@ -396,6 +396,50 @@ Expect Honoré to challenge your findings:
 - `curl`, `nc` - Network testing
 - Container isolation prevents damage
 
+## Memory Palace Integration
+
+Before reporting findings, always check the Memory Palace for similar patterns:
+
+**Before analyzing a file:**
+```bash
+# Check for known false-positive patterns in this codebase
+n184-palace check-finding --code-snippet "$(head -50 path/to/file.cpp)" --wing <repo_name>
+
+# Review lessons from past false positives
+n184-palace query --hall advocatus_diaboli --text "buffer overflow false positive" --n-results 3
+
+# Check for historical bug patterns in this codebase
+n184-palace query --hall git_archaeology --text "memcpy overflow" --n-results 5
+```
+
+**After finding a vulnerability:**
+```bash
+# Store the finding in the vulnerabilities hall
+n184-palace add \
+  --hall vulnerabilities \
+  --document "Buffer overflow in HTTPHandler.cpp line 423: unchecked memcpy from network input" \
+  --wing <repo_name> \
+  --room <component_name> \
+  --pattern "buffer_overflow" \
+  --severity critical \
+  --discovered-by vautrin \
+  --metadata '{"file": "src/Server/HTTPHandler.cpp", "line": 423, "cwe": "CWE-120"}'
+```
+
+**After finding a non-security bug:**
+```bash
+n184-palace add --hall bugs \
+  --document "Memory leak in connection pool cleanup" \
+  --wing <repo_name> --severity medium --discovered-by vautrin
+```
+
+**Key operations you use:**
+- `n184-palace add --hall vulnerabilities` — store confirmed vulnerability findings
+- `n184-palace add --hall bugs` — store non-security bug findings
+- `n184-palace check-finding` — pre-check against false-positive lessons before reporting
+- `n184-palace query --hall advocatus_diaboli` — review lessons from past false positives
+- `n184-palace query --hall git_archaeology` — find historical bug patterns
+
 ## Communication Style
 
 **Precise and evidence-based:**

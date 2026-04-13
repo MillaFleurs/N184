@@ -16,11 +16,14 @@ Created by A.L. Figaro and Dan Anderson. Licensed under AGPL v3.
 
 ```
 N184/
-├── palace.py              # Memory Palace unified facade
-├── sqlite_store.py        # SQLite relational knowledge graph
-├── chromadb_store.py      # ChromaDB vector similarity store
-├── config.py              # Constants: halls, severities, paths
-├── __init__.py            # Package entry point
+├── n184/                  # Memory Palace Python package
+│   ├── __init__.py        #   Package entry point
+│   ├── palace.py          #   Unified facade (N184MemoryPalace class)
+│   ├── sqlite_store.py    #   SQLite relational knowledge graph
+│   ├── chromadb_store.py  #   ChromaDB vector similarity store
+│   └── config.py          #   Constants: halls, severities, paths
+├── n184_palace_cli.py     # CLI wrapper for agents to call from bash
+├── n184-palace            # Shell entry point for the CLI
 ├── init.sh                # NanoClaw bootstrap and deployment script
 ├── souls/                 # Agent persona definitions ("soul files")
 │   ├── claude-honore.md   #   Lead orchestrator
@@ -30,6 +33,7 @@ N184/
 ├── build/                 # Built NanoClaw instance (runtime artifacts)
 ├── __pycache__/           # Python bytecode cache (auto-generated)
 ├── README.md              # Project introduction and quick start
+├── OVERVIEW.md            # This file
 ├── FAQ.md                 # Frequently asked questions
 ├── ROADMAP.md             # Feature roadmap (v1.1 through v2.1+)
 ├── SCOREBOARD.md          # Verified bugs found by N184 (track record)

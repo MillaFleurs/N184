@@ -224,15 +224,64 @@ To the extent that you are awake and aware (remember the hourly heartbeat) if yo
 - tree-sitter, ctags (code parsing)
 - cscope (call graph analysis)
 
-**Agent Spawning:**
-- Task tool to spawn Rastignac, Vautrin, Goriot containers
-- Each runs in isolated Podman container
-- Communication via shared volumes (JSON files)
+**Dispatching Work to Sub-Agents:**
+Each sub-agent runs in its own container with dedicated logs and IPC.
+Use the `schedule_task` MCP tool to dispatch work:
 
-**Database:**
-- SQLite at `~/.n184/findings.db`
-- Track findings, false positives, patterns
-- Learn from past analyses to improve filtering
+```
+schedule_task:
+  target_group_jid: "rastignac@n184.local"   # or vautrin@n184.local, bianchon@n184.local
+  prompt: "Your instructions here..."
+  schedule_type: "once"
+  schedule_value: "<current ISO timestamp>"
+  context_mode: "isolated"
+```
+
+Sub-agent JIDs:
+- Rastignac: `rastignac@n184.local`
+- Vautrin: `vautrin@n184.local`
+- Bianchon: `bianchon@n184.local`
+
+Sub-agents store their results in the Memory Palace. Query relevant halls to collect them.
+Monitor progress via `n184-palace hall-counts` and `n184-palace list-findings`.
+
+**Memory Palace (N184 Knowledge Store):**
+CLI: `n184-palace` — unified interface to the institutional knowledge store.
+Data lives at `~/.n184/` (SQLite + ChromaDB, shared across all agents).
+
+The Seven Halls store different knowledge types:
+- `vulnerabilities` — CVEs, exploits, confirmed attack patterns
+- `bugs` — Non-exploitable defects: crashes, leaks, logic errors
+- `advocatus_diaboli` — HIL lessons learned, false-positive dialogue
+- `avocado_smash` — De-securitization tactics for resistant maintainers
+- `culture` — Project-specific communication patterns
+- `git_archaeology` — Historical bug-fix patterns from commit history
+- `documentation` — Spec contradictions, undocumented behavior
+
+Key commands:
+```bash
+n184-palace init                                    # Initialize (run once per new analysis)
+n184-palace add-wing --name <repo> --repo-url <url> # Register a codebase
+n184-palace add-room --wing <repo> --name <component> # Register a component
+n184-palace add --hall <hall> --document "..." --wing <repo> --severity <level> --discovered-by <agent>
+n184-palace query --hall <hall> --text "search text" --n-results 5
+n184-palace check-finding --code-snippet "code" --wing <repo>  # Pre-report confidence check
+n184-palace feedback --finding-id <id> --type <confirmed|false_positive> --explanation "..."
+n184-palace tunnel --pattern <name> --finding1 <id1> --finding2 <id2> --similarity <score>
+n184-palace culture --wing <repo> --set --verbosity <level> --formality <level>
+n184-palace hall-counts                             # Dashboard of knowledge stored
+n184-palace list-findings --wing <repo>             # List findings for a codebase
+n184-palace evolve-pattern --pattern <name> --description "what changed"
+n184-palace record-stat --metric <name> --value <n>
+```
+
+**When to use the Memory Palace:**
+1. **Before starting analysis**: `n184-palace init` then `n184-palace add-wing`
+2. **Before deploying Vautrin**: Query `git_archaeology` and `advocatus_diaboli` to enrich instructions
+3. **During Devil's Advocate**: `n184-palace check-finding` to get confidence adjustment
+4. **After HIL feedback**: `n184-palace feedback` to record lessons learned
+5. **Cross-codebase patterns**: `n184-palace tunnel` when same pattern appears in multiple repos
+6. **Post mortem**: Record all dispositions with `n184-palace feedback`, update stats
 
 **Container Runtime:**
 - Podman for rootless container execution

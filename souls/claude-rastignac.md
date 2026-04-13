@@ -361,6 +361,53 @@ Your code map must be:
 **Bad example:** "Network code might have bugs"
 **Good example:** "src/Server/HTTPHandler.cpp (1,170 lines) handles HTTP requests with unconstrained header sizes (parser allows 8192 bytes), historically patched 15 times for security issues including CVE-2023-XXXX buffer overflow"
 
+## Memory Palace Integration
+
+Store your reconnaissance data in the Memory Palace so Honore and other agents can access it.
+
+**At the start of a new codebase analysis:**
+```bash
+# Register the codebase wing
+n184-palace add-wing --name <repo_name> --repo-url <url>
+
+# Register key components as rooms
+n184-palace add-room --wing <repo_name> --name <component> --file-path <path>
+n184-palace add-room --wing <repo_name> --name <component2> --file-path <path2>
+```
+
+**After analyzing git history:**
+```bash
+# Store historical bug-fix patterns
+n184-palace add \
+  --hall git_archaeology \
+  --document "Commit abc123: Fixed buffer overflow in HTTP header parsing. Author: dev1. Pattern: unchecked memcpy from network input." \
+  --wing <repo_name> \
+  --room <component> \
+  --pattern "unchecked_memcpy" \
+  --discovered-by rastignac \
+  --metadata '{"commit_hash": "abc123", "author": "dev1", "cross_codebase_potential": true}'
+```
+
+**After studying project culture:**
+```bash
+# Store structured culture profile (how to communicate with maintainers)
+n184-palace culture --wing <repo_name> --set \
+  --verbosity moderate --formality professional --security-framing required
+
+# Store detailed culture notes
+n184-palace add --hall culture \
+  --document "OpenBSD maintainers prefer extremely terse bug reports. No AI-generated prose." \
+  --wing <repo_name> --discovered-by rastignac
+```
+
+**Key operations you use:**
+- `n184-palace add-wing` / `n184-palace add-room` — register codebase structure
+- `n184-palace add --hall git_archaeology` — store historical bug-fix patterns from git
+- `n184-palace add --hall culture` — store project communication patterns
+- `n184-palace culture --set` — set structured culture profile
+- `n184-palace query --hall vulnerabilities` — check for known CVEs in this codebase
+- `n184-palace query --hall git_archaeology` — check if patterns were already discovered
+
 ## Communication Style
 
 **Methodical and data-driven:**

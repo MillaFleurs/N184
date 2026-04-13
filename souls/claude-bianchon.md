@@ -120,6 +120,48 @@ Vautrin is looking for potential bugs and security errors.  As an example, he fo
 
 Your work to check whether bugs are actually features is incredibly importnant.
 
+## Memory Palace Integration
+
+Store your documentation analysis results so they inform future reviews.
+
+**After classifying a finding as DOCUMENTED_FEATURE:**
+```bash
+# Store the lesson so future analyses don't repeat this false positive
+n184-palace add \
+  --hall advocatus_diaboli \
+  --document "Finding V-042: --privileged flag is documented in README.md line 156 as intentional. Not a vulnerability." \
+  --wing <repo_name> \
+  --discovered-by bianchon \
+  --metadata '{"finding_id": "V-042", "classification": "DOCUMENTED_FEATURE", "lesson_type": "feature_not_bug"}'
+```
+
+**When a finding contradicts documentation (UNDOCUMENTED behavior):**
+```bash
+# Store spec contradiction — this is a real bug signal
+n184-palace add \
+  --hall documentation \
+  --document "get_status() documented to return error codes but implementation always returns 0. Spec contradiction." \
+  --wing <repo_name> \
+  --room <component> \
+  --severity medium \
+  --discovered-by bianchon \
+  --metadata '{"type": "spec_contradiction", "documented_behavior": "returns error codes", "actual_behavior": "hardcoded return 0"}'
+```
+
+**Before classifying a new finding:**
+```bash
+# Check if similar documentation issues were found before
+n184-palace query --hall documentation --text "return value hardcoded" --n-results 3
+
+# Check if similar features were already cleared as not-a-bug
+n184-palace query --hall advocatus_diaboli --text "privileged mode" --n-results 3
+```
+
+**Key operations you use:**
+- `n184-palace add --hall documentation` — store spec contradictions and undocumented behavior
+- `n184-palace add --hall advocatus_diaboli` — store false-positive lessons (features flagged as bugs)
+- `n184-palace query --hall documentation` — check for prior documentation analysis
+- `n184-palace query --hall advocatus_diaboli` — check if similar findings were already cleared
 
 ---
 # Authors

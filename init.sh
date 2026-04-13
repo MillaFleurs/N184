@@ -357,14 +357,14 @@ ok "Main group CLAUDE.md written (Honoré persona)"
 SOULS_DEST="$PROJECT_ROOT/groups/main/souls"
 mkdir -p "$SOULS_DEST"
 
-for soul in claude-honore.md claude-vautrin.md claude-rastignac.md; do
+for soul in claude-honore.md claude-vautrin.md claude-rastignac.md claude-bianchon.md; do
   if [ -f "$SOULS_DIR/$soul" ]; then
     cp "$SOULS_DIR/$soul" "$SOULS_DEST/$soul"
   else
     warn "Soul file $soul not found in $SOULS_DIR"
   fi
 done
-ok "Agent souls deployed to groups/main/souls/ (Honoré, Vautrin, Rastignac)"
+ok "Agent souls deployed to groups/main/souls/ (Honoré, Vautrin, Rastignac, Bianchon)"
 
 # ── Step 5b: Register main group ──────────────────────────────────────────
 
@@ -401,6 +401,51 @@ elif [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
   warn "TELEGRAM_BOT_TOKEN is set but TELEGRAM_CHAT_ID is missing from .env"
   echo "  After startup, send /chatid to your bot in Telegram to get the ID,"
   echo "  then add TELEGRAM_CHAT_ID=tg:<chat-id> to .env and re-run init.sh"
+fi
+
+# ── Step 5d: Register sub-agent groups ──────────────────────────────────────
+# Each N184 agent gets its own NanoClaw group with a dedicated container,
+# IPC namespace, and separate logs for visibility.
+
+for agent_data in \
+  "vautrin@n184.local|Vautrin|n184-vautrin|@Vautrin|claude-vautrin.md" \
+  "rastignac@n184.local|Rastignac|n184-rastignac|@Rastignac|claude-rastignac.md" \
+  "bianchon@n184.local|Bianchon|n184-bianchon|@Bianchon|claude-bianchon.md"; do
+
+  IFS='|' read -r AGENT_JID AGENT_NAME AGENT_FOLDER AGENT_TRIGGER AGENT_SOUL <<< "$agent_data"
+
+  info "Registering $AGENT_NAME group..."
+  npx tsx setup/index.ts --step register \
+    --jid "$AGENT_JID" \
+    --name "$AGENT_NAME" \
+    --trigger "$AGENT_TRIGGER" \
+    --folder "$AGENT_FOLDER" \
+    --channel "cli" \
+    --no-trigger-required \
+    --assistant-name "$AGENT_NAME" 2>&1 | grep -v "^===" || true
+
+  # Deploy soul file as the group's CLAUDE.md
+  AGENT_SOUL_SRC="$SOULS_DIR/$AGENT_SOUL"
+  AGENT_GROUP_DIR="$PROJECT_ROOT/groups/$AGENT_FOLDER"
+  mkdir -p "$AGENT_GROUP_DIR/logs"
+  if [ -f "$AGENT_SOUL_SRC" ]; then
+    cp "$AGENT_SOUL_SRC" "$AGENT_GROUP_DIR/CLAUDE.md"
+    ok "$AGENT_NAME group registered (soul deployed to groups/$AGENT_FOLDER/)"
+  else
+    warn "Soul file $AGENT_SOUL not found at $AGENT_SOUL_SRC"
+  fi
+done
+
+# ── Step 5e: Initialize Memory Palace ───────────────────────────────────────
+
+info "Initializing N184 Memory Palace..."
+mkdir -p "$HOME/.n184"
+if command -v python3 >/dev/null 2>&1; then
+  python3 "$SCRIPT_DIR/n184_palace_cli.py" init >/dev/null 2>&1 && \
+    ok "Memory Palace initialized (~/.n184/)" || \
+    warn "Memory Palace initialization failed (chromadb may not be installed on host)"
+else
+  warn "Python3 not found — Memory Palace will be initialized on first container run"
 fi
 
 # ── Step 6: Mount allowlist ─────────────────────────────────────────────────

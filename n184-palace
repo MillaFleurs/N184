@@ -1,0 +1,4 @@
+#!/bin/bash
+# n184-palace — CLI interface to the N184 Memory Palace
+# Used by agents inside NanoClaw containers to read/write knowledge.
+exec python3 "$(dirname "$0")/n184_palace_cli.py" "$@"
