@@ -24,7 +24,7 @@ N184 uses multi-model AI consensus (Claude, DeepSeek, ChatGPT, Gemini) to discov
 
 ## What is N184?
 
-N184 is an AI-powered vulnerability discovery platform that deploys multiple AI agents to analyze codebases for security issues.
+N184 is an AI-powered bug and vulnerability discovery platform that deploys multiple AI agents to analyze codebases for security and stability issues.
 
 Its power comes from a few unique features that allow it to find bugs and security vulnerabilities that are often missed:
 
