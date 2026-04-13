@@ -244,13 +244,14 @@ N184/
 
 1. Human gives Honoré a repository to analyze (via Telegram, Slack, or Email)
 2. Honoré dispatches Rastignac to map the codebase
-3. Rastignac produces a code map with prioritized files and git history patterns
-4. Honoré dispatches the Vautrin swarm — KEDA autoscales pods using different AI models
-5. Bianchon checks findings against documentation (feature vs bug)
-6. Lousteau searches the Memory Palace for historical precedent and cross-codebase patterns
-7. Goriot validates consensus across models (2/3 threshold)
-8. Honoré applies Devil's Advocate filtering and presents findings to the human
-9. Human feedback goes to Lousteau, who archives it in the Memory Palace for future analyses
+3. Lousteau searches the Memory Palace for prior analysis of this codebase — known patterns, past false positives, culture profile — and feeds this context to Honoré and Rastignac so the swarm doesn't repeat old mistakes
+4. Rastignac produces a code map with prioritized files, git history patterns, and Lousteau's historical context
+5. Honoré dispatches the Vautrin swarm — KEDA autoscales pods using different AI models
+6. Bianchon checks findings against documentation (feature vs bug)
+7. Lousteau cross-references every finding against the Memory Palace: has this pattern been seen before? In which codebases? What was the outcome? Was it a false positive last time? He annotates findings with genealogy and confidence adjustments.
+8. Goriot validates consensus across models (2/3 threshold)
+9. Honoré applies Devil's Advocate filtering and presents findings to the human
+10. Lousteau takes the human's feedback — confirmed bugs, false positives, near-misses — and archives everything in the Memory Palace. He evolves detection patterns, updates culture profiles, records statistics, and links cross-codebase tunnels so the next analysis starts smarter than this one ended.
 
 ---
 
@@ -285,6 +286,23 @@ The MyMilla project is now archived. Rest well, Milla.
 4. Improve documentation or create tutorials
 5. Share bug patterns you've discovered
 6. Financial support if you can't contribute time
+
+---
+
+## Attributions
+
+N184 builds on ideas from a number of academic and industry sources. This section will be expanded with proper citations.
+
+<!-- TODO: Add academic paper citations. Areas to cover:
+  - Ensemble methods for defect detection
+  - LLM-based code analysis and vulnerability discovery
+  - Memory palace / method of loci applied to AI systems
+  - Multi-agent consensus and voting systems
+  - Homoiconicity and code-as-data in AI agent architectures
+  - Git history analysis for bug prediction
+  - False positive reduction in static analysis
+  - De-securitization and risk communication framing
+-->
 
 ---
 
