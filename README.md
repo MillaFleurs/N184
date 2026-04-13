@@ -1,191 +1,274 @@
-# N184 
-N184 uses multi-model AI consensus (Claude, DeepSeek, ChatGPT) to discover bugs and security vulnerabilities in codebases. Multiple agents independently analyze code and vote on findings, reducing false positives with actionable PRs. Named after element 184's island of stability.
+# N184
+
+N184 uses multi-model AI consensus (Claude, DeepSeek, ChatGPT, Gemini) to discover bugs and security vulnerabilities in codebases. Multiple agents independently analyze code and vote on findings, reducing false positives with actionable PRs. Named after element 184's island of stability.
 
 **AI-powered security and bug vulnerability analysis**
 
 ---
 
+> **Migration Notice:** N184 is actively migrating from NanoClaw/Podman to a Kubernetes-native architecture. The `main` branch may be unstable during this transition. For a stable release, use the tagged version:
+>
+> ```bash
+> git clone https://github.com/MillaFleurs/N184.git
+> cd N184
+> git checkout v1.0.0
+> ```
+>
+> v1.0.0 uses the original NanoClaw/Podman setup via `./init.sh`. See the [ROADMAP](ROADMAP.md) for what's changing.
+
+---
+
 ## What is N184?
 
-N184 is an AI-powered vulnerability discovery platform that deploys multiple AI agents to analyze codebases for security issues. 
+N184 is an AI-powered vulnerability discovery platform that deploys multiple AI agents to analyze codebases for security issues.
 
-It's power comes in a few unique features that allow it to find bugs and security vulnerabilities that are often missed.
+Its power comes from a few unique features that allow it to find bugs and security vulnerabilities that are often missed:
 
-Specifically:
-- An entire codebase is mapped out and referenced to documentation.  This allows agents to flag behavior that does not match documentation, allowing the user to either update code or documentation.
-- Agents analyze git history to flag repeated errors.  If a contributor makes the same mistake over and over, we catch it.
-- Multiple models are used to flag bugs based on the analysis above.
-- Bug reports are analyzed for consensus, and a "devil's advocate" approach is used to push for clear PRs with steps to reproduce.
-- A "librarian" checks documentation to confirm where a program differs from documented behavior.
-- Once the cycle of analysis is completed, the database is updated, and the agents get better at finding bugs.
+- **Codebase Mapping**: An entire codebase is mapped and cross-referenced with documentation. Agents flag behavior that doesn't match docs, so you can fix code or documentation.
+- **Git Archaeology**: Agents analyze git history to flag repeated errors. If a contributor makes the same mistake over and over, we catch it.
+- **Multi-Model Consensus**: Multiple models (Claude, GPT, DeepSeek, Gemini) vote on findings. 2/3 consensus threshold filters false positives.
+- **Devil's Advocate**: A systematic challenge process pushes for clear PRs with steps to reproduce.
+- **Documentation Librarian**: Checks documentation to confirm where code differs from documented behavior.
+- **Memory Palace**: An institutional knowledge store (SQLite + ChromaDB) that accumulates patterns, lessons learned, and culture profiles across analysis sessions.
 
-N184 is not theoretical.  It has been used to find bugs and generate fixes in multiple mature codebases across the internet.
+N184 is not theoretical. It has found and fixed bugs in OpenBSD, Apple MLX, Apache httpd, Docker CLI, and ClickHouse. See [SCOREBOARD.md](SCOREBOARD.md) for the full track record.
 
 ### Key Features
 
-- **🤝 Consensus Validation**: Polling multiple models allows confirmation of high quality bugs, while offloading analysis work to cheaper models.
-- **📊 Structured Output**: JSON findings with CVSS scores, CWE classifications, PoC code
-- **🔒 Security First**: Podman containers, rootless architecture, isolated execution.  
-- **⚖️ Professional Methodology**: Multi-phase analysis designed to help make code more stable and secure.
+- **Multi-Model Swarm**: Claude, GPT, DeepSeek, Gemini, plus local models via Ollama/MLX (coming soon)
+- **Structured Output**: JSON findings with CVSS scores, CWE classifications, PoC code
+- **Memory Palace**: Seven-hall knowledge store that makes agents smarter over time
+- **Kubernetes-Native**: Autoscaling agent swarms via k3s + KEDA (migration in progress)
+- **Multi-Channel**: Telegram, Slack, and Email for human-in-the-loop communication
+- **Security First**: Rootless containers, encrypted secrets, isolated execution
 
 ---
+
+## Architecture
+
+```
+Human (HIL) <── Telegram / Slack / Email ──> Controller Pod
+                                                  |
+                                              Redis (pub/sub)
+                                                  |
+                                         Honore (orchestrator)
+                                        /    |    \        \
+                                 Rastignac   |  Bianchon   Goriot
+                                  (recon)    |   (docs)    (consensus)
+                                             |
+                                       Vautrin Swarm
+                                    (KEDA autoscaled,
+                                     multiple AI models)
+                                             |
+                                             v
+                                      Memory Palace
+                                     /              \
+                               SQLite DB         ChromaDB Server
+                            (relationships)    (7 halls of verbatim
+                                                knowledge)
+```
+
+### Agent Naming Convention
+
+Characters from Honore de Balzac's *La Comedie Humaine*:
+
+- **Honore**: The orchestrator. Coordinates analysis, applies Devil's Advocate, presents findings.
+- **Vautrin**: The vulnerability hunter. Runs in swarms with different AI models.
+- **Rastignac**: Reconnaissance specialist. Maps codebases, identifies hotspots, builds code maps.
+- **Bianchon**: Documentation librarian. Checks findings against docs, filters features from bugs.
+- **Goriot**: Consensus validator. Patient, methodical, brings agents together.
+
+Each character's traits map to their function. "Vautrin found it, but Goriot rejected it in consensus" is easier to parse than "Agent-001 found it, but Agent-004 rejected it."
+
+---
+
 ## Requirements
 
 ### System Requirements
 
-- **Container Runtime**: Podman 4.0+ or Docker 20.10+
-  - Podman recommended for rootless execution
-  - Install: [podman.io/get-started](https://podman.io/get-started)
-  
+- **Kubernetes**: k3s (Linux) or k3d (macOS) for the new architecture
+  - OR Podman 4.0+ for the v1.0.0 NanoClaw setup
 - **Python**: 3.11 or higher
-  - Check version: `python3 --version`
-
+- **Node.js**: 20 or higher (for agent containers)
 - **Git**: For cloning repositories to analyze
-  - Install: `git --version` to check
-
-- **NanoClaw**: Nanoclaw is the agentic solution used on the backend.  If you do not have it downloaded it will be downloaded for you and installed for you.
-
-- **Communications Platform**: We use Telegram in this example but you need a way to communicate with N184.  This could be any platform supported by NanoClaw.
-
-- **Other**: N184 can check a variety of codebases, which may require codebase specific software.  (e.g. to test Clojure based software, you'll need to install Clojure).
-
-- **HIL**: The most imporant requirement for N184 is the Human In the Loop.  The HIL is responsible for providing feedback to the N184 Agent, which it will learn from.
-
-### Python Dependencies
-
-Install via `requirements.txt`:
-
-```bash
-pip install -r requirements.txt
-```
-
-**Core dependencies:**
-- `pydantic-ai>=1.0.0` - AI agent framework
-- `pydantic>=2.0.0` - Data validation
-- `pyyaml>=6.0` - Configuration parsing
-- `anthropic>=0.86.0` - Claude API client
-- `openai>=1.0.0` - GPT-4 and DeepSeek API client
+- **Docker**: Required on macOS for building container images
+- **Helm**: For installing KEDA (auto-installed by setup script)
 
 ### API Keys (Required)
 
-N184 requires at least one API key to function:
+At minimum, you need an Anthropic key. Additional providers enable multi-model consensus:
 
-- **Anthropic** (Claude): [console.anthropic.com](https://console.anthropic.com/)
-- **DeepSeek**: [platform.deepseek.com](https://platform.deepseek.com/)
-- **OpenAI** (GPT-5): [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
-- **Ollama** (Any): You can install your own models using Ollama (https://ollama.com/)
+- **Anthropic** (Claude): [console.anthropic.com](https://console.anthropic.com/) - **Required**
+- **OpenAI** (GPT): [platform.openai.com/api-keys](https://platform.openai.com/api-keys) - Optional
+- **DeepSeek**: [platform.deepseek.com](https://platform.deepseek.com/) - Optional
+- **Google** (Gemini): [aistudio.google.com/apikey](https://aistudio.google.com/apikey) - Optional
 
-**Cost estimate:** Costs vary based upon model used and API used.
+### Messaging Channels (at least one required)
 
-### Optional
-
-- **Docker Compose**: For multi-agent parallel execution
-  - Install: `docker-compose --version` to check
-  
-- **Storage**: ~2-5GB per repository clone (cached in `~/.n184/cache/`)
+- **Telegram**: Get a bot token from [@BotFather](https://t.me/botfather)
+- **Slack**: Create a Slack app with Socket Mode enabled
+- **Email**: Any IMAP/SMTP server (Gmail, Fastmail, self-hosted)
 
 ---
 
 ## Quick Start
 
-### 0. Download
+### Option A: Kubernetes (Recommended)
 
 ```bash
-$ git clone https://github.com/MillaFleurs/N184.git
+# 1. Clone
+git clone https://github.com/MillaFleurs/N184.git
+cd N184
+
+# 2. Configure
+cp .env.example .env
+# Edit .env with your API keys and channel credentials
+
+# 3. Deploy
+bash k8s/setup.sh
+
+# 4. Talk to Honore via your configured channel (Telegram, Slack, or Email)
 ```
 
-### 1. Configure Environment
+The setup script handles everything: installs k3s/k3d, installs KEDA, builds container images, creates secrets, and deploys all pods.
+
+To enable secrets encryption at rest:
+
 ```bash
-$ cp ./.env.example ./.env
+bash k8s/setup.sh --encrypt-secrets
 ```
 
-Open ```.env.``` in your favorite text editor and provide any necessary API keys.
-
-**Get API keys from:**
-- [Anthropic Console](https://console.anthropic.com/)
-- [DeepSeek Platform](https://platform.deepseek.com/)
-- [OpenAI API Keys](https://platform.openai.com/api-keys)
-
-See `.env.example` for full configuration options.
-
-### 2. Run Setup Script
+### Option B: NanoClaw/Podman (v1.0.0)
 
 ```bash
-
-$ ./init.sh
-
+git checkout v1.0.0
+cp .env.example .env
+# Edit .env
+./init.sh
 ```
 
-### 3. Optional: Troubleshoot or make updates to the default configuration
+### Monitoring
 
-Thanks to the flexibility of NanoClaw, from the root directory of your nanoclaw install you can invoke a Claude code session with ```claude``` and make any changes you desire (teaching new skills for instance).  You can also use this to troubleshoot if you are unable to communicate with N184.
-
-### 4. Start N184
-
-By default, N184 uses a Telegram connection to your podman container.  This requires asking the blessing of @BotFather on Telegram to get an API token, and filling in the .env file correctly.
-
-If you have done all steps correctly, you should be able to message your bot on Telegram and say "Hello" or get down to working.
-
-If this is not working, please invoke ```claude``` and troubleshoot.  You can ask Honoré to kick off a swarm, or just chat with him like any normal agent.  (Hint: he likes Turkish Coffee)  Once you're able to chat with Honoré, you can move forward with any 
-
-### 5. Analysis
-
-If you provide Honoré a git hub link or other location, he will be able to clone the repository and kick off swarm consensus analysis. 
-
-By design Honoré works in a Podman rootless container, which means he may be limited in what he can do within his container without explicitly updating it.
-
-Podman provides a number of methods to collaborate with Honoré with minimal system risk.  (Another reason why we chose NanoClaw as our base).
-
-As an example, I asked Honoré to review a git repository with a full swarm review.  He confirmed all environmental variables and API keys were working and he was able to spin up DeepSeek, Claude, ChatGPT, and other agents.
-
-Once done, I would normally do something like below:
-
+```bash
+kubectl get pods -n n184                    # Pod status
+kubectl logs -f deploy/honore -n n184       # Honore logs
+kubectl logs -f deploy/controller -n n184   # Controller logs
+kubectl get jobs -n n184                    # Sub-agent Jobs
+kubectl get scaledjob -n n184              # Vautrin autoscaler status
 ```
-# podman provies a list of all containers running.  Which gets me **my** container d940146efaf6
-$ podman ps
-
-ONTAINER ID  IMAGE                                 COMMAND          CREATED        STATUS               PORTS                                 NAMES
-d940146efaf6  localhost/nanoclaw-agent:latest                        8 seconds ago  Up 8 seconds                                               nanoclaw-main-1775418882653
-
-# let's go look around the container
-$ podman exec -it d940146efaf6  /bin/bash
-$ ls
-# I see results here and decide what I want, I'm going to copy it now...
-$ tar cvf ./myresults.tar.gz ./some-directory
-$ exit
-
-# back outside of the pod, I can now copy the file I created
-$ podman cp d940146efaf6:/workspace/group/myrseults.tar.gz ./
-
-```
-
-There are a variety of other ways one might collaborate with their agent as well outside the scope of this document.  For instance, you can set up a shared drive that Honoré has access to, provide Honoré access to ftp or email, or any number of things.
-
-We hope you enjoy working with Honoré.  Please reach out with any questions at our github site.
-
-We also welcome any collaboration or attributions.
 
 ---
+
+## Configuration (.env)
+
+```bash
+# Required
+ANTHROPIC_API_KEY=sk-ant-...
+
+# At least one messaging channel
+TELEGRAM_BOT_TOKEN=123456:ABC...
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+EMAIL_IMAP_HOST=imap.gmail.com
+EMAIL_IMAP_USER=you@gmail.com
+EMAIL_IMAP_PASS=app-password
+EMAIL_SMTP_HOST=smtp.gmail.com
+EMAIL_POLL_INTERVAL=60
+
+# Optional multi-model providers
+OPENAI_API_KEY=sk-...
+DEEPSEEK_API_KEY=sk-...
+GEMINI_API_KEY=AI...
+```
+
+---
+
+## Project Structure
+
+```
+N184/
+├── n184/                    # Memory Palace Python package
+│   ├── palace.py            #   Unified API (N184MemoryPalace)
+│   ├── sqlite_store.py      #   SQLite relational graph
+│   ├── chromadb_store.py    #   ChromaDB vector store (7 halls)
+│   └── config.py            #   Paths and constants
+├── n184_palace_cli.py       # CLI wrapper for agents (n184-palace)
+├── agent-runner/            # TypeScript agent runner (Claude Code SDK)
+│   └── src/
+│       ├── index.ts         #   Core query loop (Redis + file IPC)
+│       ├── redis-ipc.ts     #   Redis pub/sub adapter
+│       ├── ipc-mcp-stdio.ts #   MCP tools (send_message, schedule_task)
+│       ├── honore-entrypoint.ts   # Persistent mode for Honore
+│       └── vautrin-entrypoint.ts  # Queue consumer for Vautrin
+├── controller/              # Python control plane
+│   ├── main.py              #   Asyncio entry point
+│   ├── channel.py           #   Channel protocol + router
+│   ├── telegram_bot.py      #   Telegram channel
+│   ├── slack_channel.py     #   Slack channel (Socket Mode)
+│   ├── email_channel.py     #   Email channel (IMAP poll + SMTP)
+│   ├── redis_bridge.py      #   Task watcher + message relay
+│   └── job_manager.py       #   k8s Job creation
+├── container/               # Agent container image
+│   ├── Dockerfile           #   node:22 + Python + chromadb + Claude Code
+│   ├── entrypoint.sh        #   Standard stdin entry
+│   ├── k8s-entrypoint.sh    #   k8s Job entry (fetches from Redis)
+│   └── build.sh             #   Build + import to k3d
+├── k8s/                     # Kubernetes manifests (Kustomize)
+│   ├── base/                #   Namespace, RBAC, Redis, ChromaDB,
+│   │                        #   Controller, Honore, KEDA Vautrin
+│   ├── overlays/local/      #   macOS (k3d) patches
+│   ├── overlays/production/ #   Linux (k3s) patches
+│   └── setup.sh             #   One-command deploy
+├── souls/                   # Agent persona definitions
+│   ├── claude-honore.md     #   Lead orchestrator
+│   ├── claude-vautrin.md    #   Vulnerability hunter
+│   ├── claude-rastignac.md  #   Reconnaissance specialist
+│   └── claude-bianchon.md   #   Documentation librarian
+├── SCOREBOARD.md            # Verified bugs found by N184
+├── ROADMAP.md               # Feature roadmap
+├── FAQ.md                   # Frequently asked questions
+├── OVERVIEW.md              # Detailed file-by-file overview
+└── LICENSE                  # AGPL v3
+```
+
+---
+
+## How It Works
+
+1. Human gives Honore a repository to analyze (via Telegram, Slack, or Email)
+2. Honore initializes the Memory Palace and dispatches Rastignac to map the codebase
+3. Rastignac produces a code map with prioritized files and git history patterns
+4. Honore dispatches the Vautrin swarm — KEDA autoscales pods using different AI models
+5. Bianchon checks findings against documentation (feature vs bug)
+6. Goriot validates consensus across models (2/3 threshold)
+7. Honore applies Devil's Advocate filtering and presents findings to the human
+8. Human feedback is stored in the Memory Palace, improving future analyses
+
+---
+
 ## Design Philosophy
 
-### Agent Naming Convention
+**N184 is convergent evolution, not competition.** Glasswing proved the category exists. AISLE proved small models can outperform large ones with the right system design. N184 proves you don't need $100M to make software safer.
 
-When managing a swarm of AI agents, "Scout#145" doesn't roll off the tongue. I needed a way to refer to each agent with personality and keep them distinct. To solve this, I borrowed characters from Honoré de Balzac's *La Comédie Humaine*:
-
-- **Vautrin**: The primary analyst - sees through facades, finds what others miss
-- **Goriot**: The consensus validator - patient, methodical, brings agents together
-- **Rastignac**: Pattern detection - ambitious, strategic, learns from history
-- **Bianchon**: Deep diagnostics - medical precision applied to code.  Our "librarian" responsible for checking documentation vs findings.
-- **Nucingen**: Risk assessment - banker's eye for CVSS scoring and impact (TODO)
-
-
-Each character's traits map to their function in the analysis pipeline. It's more memorable than numerical IDs and makes debugging conversations clearer: "Vautrin found it, but Goriot rejected it in consensus" is easier to parse than "Agent-001 found it, but Agent-004 rejected it."
-
-
+The adding machine didn't eliminate accountants. LLMs won't eliminate security researchers. They're force multipliers. N184 is the adding machine moment for vulnerability detection.
 
 ---
-# Authors
-N184 was created through the cowork of A.L. Figaro and Dan Anderson (https://github.com/MillaFleurs)
 
-# License
-See LICENSE.  This software is distributed under the terms of the GNU Affero General Public License v. 3.0.
+## Contributing
+
+1. Submit PRs improving agent prompts, adding validation checks, or addressing open issues
+2. Report false positives to help improve filtering
+3. Add support for new LLM providers
+4. Improve documentation or create tutorials
+5. Share bug patterns you've discovered
+6. Financial support if you can't contribute time
+
+---
+
+## Authors
+
+N184 was created through the cowork of A.L. Figaro and Dan Anderson ([github.com/MillaFleurs](https://github.com/MillaFleurs))
+
+## License
+
+See [LICENSE](LICENSE). This software is distributed under the terms of the GNU Affero General Public License v. 3.0.
