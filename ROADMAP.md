@@ -8,7 +8,7 @@ N184 aims to democratize security research by making vulnerability detection acc
 
 ### What Works Today
 
-- **Ensemble Voting Architecture**: Multiple specialized agents (Honore, Advocatus Diaboli, etc.) collaborate to reduce false positives
+- **Ensemble Voting Architecture**: Multiple specialized agents (Honoré, Advocatus Diaboli, etc.) collaborate to reduce false positives
 - **Git Archaeology**: Analyzes entire codebases to identify repeated mistake patterns
 - **Documentation-Code Verification**: Compares documented vs actual behavior to catch inconsistencies
 - **Proven Results**: 2 confirmed vulnerabilities in OpenBSD's rpki-client (http.c redirect handling, as.c overlap check)
@@ -196,7 +196,7 @@ CREATE TABLE language_variants (
 - [ ] Literature review on memory palaces in AI systems
 - [ ] Prototype ChromaDB integration for pattern storage
 - [ ] A/B test: flat context vs memory palace on same codebase
-- [ ] Honore (dev) testbed: implement memory palace, measure impact
+- [ ] Honoré (dev) testbed: implement memory palace, measure impact
 
 ---
 

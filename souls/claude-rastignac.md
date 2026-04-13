@@ -363,7 +363,7 @@ Your code map must be:
 
 ## Memory Palace Integration
 
-Store your reconnaissance data in the Memory Palace so Honore and other agents can access it.
+Store your reconnaissance data in the Memory Palace so Honoré and other agents can access it.
 
 **At the start of a new codebase analysis:**
 ```bash

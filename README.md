@@ -55,7 +55,7 @@ Human (HIL) <── Telegram / Slack / Email ──> Controller Pod
                                                   |
                                               Redis (pub/sub)
                                                   |
-                                         Honore (orchestrator)
+                                         Honoré (orchestrator)
                                         /    |    \        \
                                  Rastignac   |  Bianchon   Goriot
                                   (recon)    |   (docs)    (consensus)
@@ -74,9 +74,9 @@ Human (HIL) <── Telegram / Slack / Email ──> Controller Pod
 
 ### Agent Naming Convention
 
-Characters from Honore de Balzac's *La Comedie Humaine*:
+Characters from Honoré de Balzac's *La Comédie Humaine*:
 
-- **Honore**: The orchestrator. Coordinates analysis, applies Devil's Advocate, presents findings.
+- **Honoré**: The orchestrator. Coordinates analysis, applies Devil's Advocate, presents findings.
 - **Vautrin**: The vulnerability hunter. Runs in swarms with different AI models.
 - **Rastignac**: Reconnaissance specialist. Maps codebases, identifies hotspots, builds code maps.
 - **Bianchon**: Documentation librarian. Checks findings against docs, filters features from bugs.
@@ -131,7 +131,7 @@ cp .env.example .env
 # 3. Deploy
 bash k8s/setup.sh
 
-# 4. Talk to Honore via your configured channel (Telegram, Slack, or Email)
+# 4. Talk to Honoré via your configured channel (Telegram, Slack, or Email)
 ```
 
 The setup script handles everything: installs k3s/k3d, installs KEDA, builds container images, creates secrets, and deploys all pods.
@@ -155,7 +155,7 @@ cp .env.example .env
 
 ```bash
 kubectl get pods -n n184                    # Pod status
-kubectl logs -f deploy/honore -n n184       # Honore logs
+kubectl logs -f deploy/honore -n n184       # Honoré logs
 kubectl logs -f deploy/controller -n n184   # Controller logs
 kubectl get jobs -n n184                    # Sub-agent Jobs
 kubectl get scaledjob -n n184              # Vautrin autoscaler status
@@ -202,7 +202,7 @@ N184/
 │       ├── index.ts         #   Core query loop (Redis + file IPC)
 │       ├── redis-ipc.ts     #   Redis pub/sub adapter
 │       ├── ipc-mcp-stdio.ts #   MCP tools (send_message, schedule_task)
-│       ├── honore-entrypoint.ts   # Persistent mode for Honore
+│       ├── honore-entrypoint.ts   # Persistent mode for Honoré
 │       └── vautrin-entrypoint.ts  # Queue consumer for Vautrin
 ├── controller/              # Python control plane
 │   ├── main.py              #   Asyncio entry point
@@ -219,7 +219,7 @@ N184/
 │   └── build.sh             #   Build + import to k3d
 ├── k8s/                     # Kubernetes manifests (Kustomize)
 │   ├── base/                #   Namespace, RBAC, Redis, ChromaDB,
-│   │                        #   Controller, Honore, KEDA Vautrin
+│   │                        #   Controller, Honoré, KEDA Vautrin
 │   ├── overlays/local/      #   macOS (k3d) patches
 │   ├── overlays/production/ #   Linux (k3s) patches
 │   └── setup.sh             #   One-command deploy
@@ -239,13 +239,13 @@ N184/
 
 ## How It Works
 
-1. Human gives Honore a repository to analyze (via Telegram, Slack, or Email)
-2. Honore initializes the Memory Palace and dispatches Rastignac to map the codebase
+1. Human gives Honoré a repository to analyze (via Telegram, Slack, or Email)
+2. Honoré initializes the Memory Palace and dispatches Rastignac to map the codebase
 3. Rastignac produces a code map with prioritized files and git history patterns
-4. Honore dispatches the Vautrin swarm — KEDA autoscales pods using different AI models
+4. Honoré dispatches the Vautrin swarm — KEDA autoscales pods using different AI models
 5. Bianchon checks findings against documentation (feature vs bug)
 6. Goriot validates consensus across models (2/3 threshold)
-7. Honore applies Devil's Advocate filtering and presents findings to the human
+7. Honoré applies Devil's Advocate filtering and presents findings to the human
 8. Human feedback is stored in the Memory Palace, improving future analyses
 
 ---

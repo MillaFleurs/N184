@@ -151,7 +151,7 @@ Each file defines the personality, role, methodology, and output format for one 
 
 ### `claude-honore.md` -- Lead Orchestrator
 
-Named after Honore de Balzac. The conductor of the N184 orchestra. Responsibilities:
+Named after Honoré de Balzac. The conductor of the N184 orchestra. Responsibilities:
 1. **Initial assessment** -- Clones repos, maps attack surface, asks clarifying questions
 2. **Agent coordination** -- Spawns and manages Rastignac, Vautrin swarm, Goriot, Bianchon
 3. **Devil's Advocate filtering** -- Systematically challenges every finding before presenting to humans (reachability, input control, mitigations, type system, impact, exploitability)
@@ -163,12 +163,12 @@ Also includes Balzac fun facts and a philosophical argument that LLMs meet NASA'
 
 ### `claude-vautrin.md` -- Vulnerability Hunter
 
-Named after the master criminal from La Comedie Humaine. The swarm worker -- multiple instances run in parallel using different AI models. Receives target files from Rastignac's code map and hunts for:
+Named after the master criminal from La Comédie Humaine. The swarm worker -- multiple instances run in parallel using different AI models. Receives target files from Rastignac's code map and hunts for:
 - Buffer overflows, integer overflows, type confusion
 - Deserialization bugs, auth bypass, SQL/command injection
 - Resource exhaustion, use-after-free, regex DoS
 
-Outputs structured JSON findings. Generates PoCs when requested. Expects to be challenged by Honore's Devil's Advocate process.
+Outputs structured JSON findings. Generates PoCs when requested. Expects to be challenged by Honoré's Devil's Advocate process.
 
 ### `claude-rastignac.md` -- Reconnaissance Specialist
 
@@ -203,7 +203,7 @@ The main setup script that installs and configures the entire NanoClaw + N184 st
 7. Builds TypeScript
 8. Builds container image
 9. Tests container with a hello prompt
-10. Deploys soul files (Honore as main, plus Vautrin and Rastignac)
+10. Deploys soul files (Honoré as main, plus Vautrin and Rastignac)
 11. Registers main group and optional Telegram chat
 12. Creates mount allowlist, syncs .env, generates launcher wrapper
 13. Sets up background service (launchd on macOS, systemd on Linux)
@@ -235,7 +235,7 @@ This is a runtime artifact, not source code.
 
 ### `README.md` -- Project Introduction
 
-Covers what N184 is, system requirements (Podman, Python 3.11+, NanoClaw, API keys), quick start guide (clone, configure .env, run init.sh, talk to Honore via Telegram), and the Balzac agent naming convention.
+Covers what N184 is, system requirements (Podman, Python 3.11+, NanoClaw, API keys), quick start guide (clone, configure .env, run init.sh, talk to Honoré via Telegram), and the Balzac agent naming convention.
 
 ### `FAQ.md` -- Frequently Asked Questions
 
@@ -286,7 +286,7 @@ Slide deck for presenting N184.
 ```
 Human (HIL) <--Telegram/CLI--> NanoClaw Container
                                     |
-                                 Honore (orchestrator)
+                                 Honoré (orchestrator)
                                 /   |   \        \
                          Rastignac  |  Bianchon   Goriot
                         (recon)     |  (docs)     (consensus)
@@ -303,13 +303,13 @@ Human (HIL) <--Telegram/CLI--> NanoClaw Container
                                    verbatim docs)
 ```
 
-1. Human gives Honore a repo to analyze
-2. Honore spawns Rastignac to map the codebase
+1. Human gives Honoré a repo to analyze
+2. Honoré spawns Rastignac to map the codebase
 3. Rastignac produces a code map with prioritized files
-4. Honore spawns Vautrin swarm (multiple models) targeting those files
+4. Honoré spawns Vautrin swarm (multiple models) targeting those files
 5. Bianchon checks findings against documentation (feature vs bug)
 6. Goriot validates consensus across models (2/3 threshold)
-7. Honore applies Devil's Advocate filtering
+7. Honoré applies Devil's Advocate filtering
 8. Filtered findings presented to human for review
 9. Human feedback stored in Memory Palace (lessons learned)
 10. Palace knowledge improves future analyses
