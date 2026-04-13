@@ -11,22 +11,36 @@ from typing import Any
 
 import chromadb
 
-from n184_memory_palace.config import CHROMADB_PATH, HALLS
+from n184_memory_palace.config import CHROMADB_HOST, CHROMADB_PATH, CHROMADB_PORT, HALLS
 
 
 class ChromaDBStore:
-    """Manages ChromaDB collections (the Seven Halls)."""
+    """Manages ChromaDB collections (the Seven Halls).
+
+    Supports two modes:
+      - Embedded (default): PersistentClient writing to local disk
+      - Server: HttpClient connecting to a ChromaDB server (set CHROMADB_HOST env var)
+
+    The collection API is identical in both modes.
+    """
 
     def __init__(self, persist_dir: Path | str | None = None) -> None:
         self.persist_dir = Path(persist_dir) if persist_dir else CHROMADB_PATH
-        self.persist_dir.mkdir(parents=True, exist_ok=True)
         self._client: chromadb.ClientAPI | None = None
         self._collections: dict[str, chromadb.Collection] = {}
 
     @property
     def client(self) -> chromadb.ClientAPI:
         if self._client is None:
-            self._client = chromadb.PersistentClient(path=str(self.persist_dir))
+            if CHROMADB_HOST:
+                # Server mode: connect to remote ChromaDB via HTTP
+                self._client = chromadb.HttpClient(
+                    host=CHROMADB_HOST, port=CHROMADB_PORT
+                )
+            else:
+                # Embedded mode: local file-based storage
+                self.persist_dir.mkdir(parents=True, exist_ok=True)
+                self._client = chromadb.PersistentClient(path=str(self.persist_dir))
         return self._client
 
     def initialize(self) -> None:

@@ -23,6 +23,13 @@ patches:
       - op: replace
         path: /spec/hostPath/path
         value: /home/n184/.claude
+  - target:
+      kind: PersistentVolume
+      name: n184-chromadb-pv
+    patch: |
+      - op: replace
+        path: /spec/hostPath/path
+        value: /home/n184/.n184/chromadb-server
   # Production resource limits
   - target:
       kind: Deployment

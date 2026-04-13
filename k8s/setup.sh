@@ -214,6 +214,7 @@ ok "Manifests applied"
 
 info "Waiting for pods to start..."
 kubectl rollout status deployment/redis -n n184 --timeout=60s
+kubectl rollout status deployment/chromadb -n n184 --timeout=120s
 kubectl rollout status deployment/controller -n n184 --timeout=120s
 kubectl rollout status deployment/honore -n n184 --timeout=180s
 

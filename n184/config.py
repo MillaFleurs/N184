@@ -1,11 +1,16 @@
 """Configuration and constants for the N184 Memory Palace."""
 
+import os
 from pathlib import Path
 
 # Default storage location
 N184_HOME = Path.home() / ".n184"
 SQLITE_DB_PATH = N184_HOME / "memory_palace.db"
 CHROMADB_PATH = N184_HOME / "memory_palace_chromadb"
+
+# ChromaDB server mode (set CHROMADB_HOST to enable HttpClient instead of PersistentClient)
+CHROMADB_HOST = os.environ.get("CHROMADB_HOST")  # e.g. "chromadb.n184.svc.cluster.local"
+CHROMADB_PORT = int(os.environ.get("CHROMADB_PORT", "8000"))
 
 # The Seven Halls - ChromaDB collection definitions
 HALLS = {

@@ -26,6 +26,10 @@ spec:
                 value: "redis://redis.n184.svc.cluster.local:6379"
               - name: N184_AGENT_NAME
                 value: "vautrin"
+              - name: CHROMADB_HOST
+                value: "chromadb.n184.svc.cluster.local"
+              - name: CHROMADB_PORT
+                value: "8000"
               - name: ANTHROPIC_API_KEY
                 valueFrom:
                   secretKeyRef:
@@ -56,7 +60,7 @@ spec:
     ttlSecondsAfterFinished: 300
   pollingInterval: 10
   minReplicaCount: 0
-  maxReplicaCount: 1  # Start conservative (ChromaDB concurrency). Increase after adding ChromaDB server.
+  maxReplicaCount: 10
   successfulJobsHistoryLimit: 5
   failedJobsHistoryLimit: 3
   scalingStrategy:

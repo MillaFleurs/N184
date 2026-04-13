@@ -140,6 +140,14 @@ class JobManager:
                                         name="JOB_NAME", value=job_name
                                     ),
                                     client.V1EnvVar(
+                                        name="CHROMADB_HOST",
+                                        value="chromadb.n184.svc.cluster.local",
+                                    ),
+                                    client.V1EnvVar(
+                                        name="CHROMADB_PORT",
+                                        value="8000",
+                                    ),
+                                    client.V1EnvVar(
                                         name="ANTHROPIC_API_KEY",
                                         value_from=client.V1EnvVarSource(
                                             secret_key_ref=client.V1SecretKeySelector(

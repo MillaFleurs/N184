@@ -23,6 +23,13 @@ patches:
       - op: replace
         path: /spec/hostPath/path
         value: /tmp/n184-honore-sessions
+  - target:
+      kind: PersistentVolume
+      name: n184-chromadb-pv
+    patch: |
+      - op: replace
+        path: /spec/hostPath/path
+        value: /tmp/n184-chromadb
   # Smaller resource limits for local dev
   - target:
       kind: Deployment
