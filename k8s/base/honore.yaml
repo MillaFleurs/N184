@@ -53,6 +53,24 @@ spec:
                 secretKeyRef:
                   name: n184-api-keys
                   key: ANTHROPIC_API_KEY
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: n184-api-keys
+                  key: OPENAI_API_KEY
+                  optional: true
+            - name: DEEPSEEK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: n184-api-keys
+                  key: DEEPSEEK_API_KEY
+                  optional: true
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: n184-api-keys
+                  key: GEMINI_API_KEY
+                  optional: true
           volumeMounts:
             - name: soul
               mountPath: /workspace/group/CLAUDE.md

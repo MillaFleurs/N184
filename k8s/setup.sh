@@ -151,7 +151,7 @@ if [ -f "$N184_ROOT/.env" ]; then
   set +a
 fi
 
-# Prompt for missing keys
+# Prompt for required keys
 if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
   read -sp "  Anthropic API Key: " ANTHROPIC_API_KEY
   echo
@@ -162,10 +162,27 @@ if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
   echo
 fi
 
+# Optional multi-model keys (read from .env or leave empty)
+OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-}"
+GEMINI_API_KEY="${GEMINI_API_KEY:-}"
+
+# Show which providers are configured
+[ -n "$OPENAI_API_KEY" ] && ok "OpenAI key found" || warn "OpenAI key not set (optional)"
+[ -n "$DEEPSEEK_API_KEY" ] && ok "DeepSeek key found" || warn "DeepSeek key not set (optional)"
+[ -n "$GEMINI_API_KEY" ] && ok "Gemini key found" || warn "Gemini key not set (optional)"
+
+# TODO: Add support for local LLM servers (Ollama, llama.cpp, MLX).
+# When implemented, read OLLAMA_BASE_URL / LLAMA_CPP_BASE_URL / MLX_BASE_URL
+# from .env and pass as config to agent pods.
+
 kubectl create secret generic n184-api-keys \
   --namespace n184 \
   --from-literal=ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}" \
   --from-literal=TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN}" \
+  --from-literal=OPENAI_API_KEY="${OPENAI_API_KEY}" \
+  --from-literal=DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY}" \
+  --from-literal=GEMINI_API_KEY="${GEMINI_API_KEY}" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 ok "API secrets configured"
 

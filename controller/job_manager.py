@@ -30,6 +30,35 @@ SECRET_NAME = "n184-api-keys"
 PALACE_PVC = "n184-palace-pvc"
 
 
+def _api_key_envs() -> list[client.V1EnvVar]:
+    """Build env var list for all API keys from k8s Secret."""
+    keys = [
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "GEMINI_API_KEY",
+    ]
+    envs = []
+    for key in keys:
+        envs.append(
+            client.V1EnvVar(
+                name=key,
+                value_from=client.V1EnvVarSource(
+                    secret_key_ref=client.V1SecretKeySelector(
+                        name=SECRET_NAME,
+                        key=key,
+                        optional=key != "ANTHROPIC_API_KEY",
+                    )
+                ),
+            )
+        )
+    # TODO: Add support for local LLM servers (Ollama, llama.cpp, MLX)
+    # When implemented, add env vars like:
+    #   OLLAMA_BASE_URL, LLAMA_CPP_BASE_URL, MLX_BASE_URL
+    # These would point to k8s Services running local model servers.
+    return envs
+
+
 class JobManager:
     """Creates and monitors k8s Jobs for N184 agents."""
 
@@ -147,15 +176,8 @@ class JobManager:
                                         name="CHROMADB_PORT",
                                         value="8000",
                                     ),
-                                    client.V1EnvVar(
-                                        name="ANTHROPIC_API_KEY",
-                                        value_from=client.V1EnvVarSource(
-                                            secret_key_ref=client.V1SecretKeySelector(
-                                                name=SECRET_NAME,
-                                                key="ANTHROPIC_API_KEY",
-                                            )
-                                        ),
-                                    ),
+                                    # API keys for multi-model swarm
+                                    *_api_key_envs(),
                                 ],
                                 volume_mounts=[
                                     client.V1VolumeMount(
