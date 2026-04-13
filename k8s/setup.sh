@@ -8,6 +8,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 N184_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# ── Options ───────────────────────────────────────────────────────────
+# --encrypt-secrets   Enable encryption at rest for k8s Secrets (off by default)
+
+ENCRYPT_SECRETS=false
+for arg in "$@"; do
+  case "$arg" in
+    --encrypt-secrets) ENCRYPT_SECRETS=true ;;
+  esac
+done
+
 # ── Colors ────────────────────────────────────────────────────────────
 
 RED='\033[0;31m'
@@ -61,11 +71,20 @@ case "$OS" in
     else
       info "Creating k3d cluster 'n184'..."
       mkdir -p "$HOME/.n184" "/tmp/n184-honore-sessions"
-      k3d cluster create n184 \
-        --volume "$HOME/.n184:/tmp/n184-palace" \
-        --volume "/tmp/n184-honore-sessions:/tmp/n184-honore-sessions" \
-        --agents 0 \
+
+      K3D_ARGS=(
+        --volume "$HOME/.n184:/tmp/n184-palace"
+        --volume "/tmp/n184-honore-sessions:/tmp/n184-honore-sessions"
+        --agents 0
         --wait
+      )
+
+      if [ "$ENCRYPT_SECRETS" = true ]; then
+        K3D_ARGS+=(--k3s-arg "--secrets-encryption@server:0")
+        info "Secrets encryption at rest: ENABLED"
+      fi
+
+      k3d cluster create n184 "${K3D_ARGS[@]}"
       ok "k3d cluster created"
     fi
 
@@ -81,10 +100,26 @@ case "$OS" in
     # Install k3s if missing
     if ! command -v kubectl >/dev/null 2>&1; then
       info "Installing k3s..."
-      curl -sfL https://get.k3s.io | sh -
+      K3S_ARGS=""
+      if [ "$ENCRYPT_SECRETS" = true ]; then
+        K3S_ARGS="--secrets-encryption"
+        info "Secrets encryption at rest: ENABLED"
+      fi
+      curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="$K3S_ARGS" sh -
       ok "k3s installed"
     else
       ok "kubectl already available"
+      # Enable encryption on existing cluster if requested
+      if [ "$ENCRYPT_SECRETS" = true ]; then
+        if ! k3s secrets-encrypt status 2>/dev/null | grep -q "Enabled"; then
+          info "Enabling secrets encryption on existing cluster..."
+          sudo k3s secrets-encrypt enable
+          sudo systemctl restart k3s
+          ok "Secrets encryption enabled (restart complete)"
+        else
+          ok "Secrets encryption already enabled"
+        fi
+      fi
     fi
 
     # Set kubeconfig for k3s
@@ -265,6 +300,11 @@ echo ""
 echo "  Overlay:    $OVERLAY"
 echo "  Namespace:  n184"
 echo "  Palace:     ~/.n184/"
+if [ "$ENCRYPT_SECRETS" = true ]; then
+echo "  Encryption: secrets encrypted at rest"
+else
+echo "  Encryption: off (enable with --encrypt-secrets)"
+fi
 echo ""
 echo "Quick commands:"
 echo "  kubectl get pods -n n184              # Check pod status"
