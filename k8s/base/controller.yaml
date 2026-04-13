@@ -29,11 +29,55 @@ spec:
               value: "Honoré"
             - name: LOG_LEVEL
               value: "INFO"
+            # Telegram
             - name: TELEGRAM_BOT_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: n184-api-keys
                   key: TELEGRAM_BOT_TOKEN
+                  optional: true
+            # Slack
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: n184-api-keys
+                  key: SLACK_BOT_TOKEN
+                  optional: true
+            - name: SLACK_APP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: n184-api-keys
+                  key: SLACK_APP_TOKEN
+                  optional: true
+            # Email
+            - name: EMAIL_IMAP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: n184-api-keys
+                  key: EMAIL_IMAP_HOST
+                  optional: true
+            - name: EMAIL_IMAP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: n184-api-keys
+                  key: EMAIL_IMAP_USER
+                  optional: true
+            - name: EMAIL_IMAP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: n184-api-keys
+                  key: EMAIL_IMAP_PASS
+                  optional: true
+            - name: EMAIL_SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: n184-api-keys
+                  key: EMAIL_SMTP_HOST
+                  optional: true
+            - name: EMAIL_SMTP_PORT
+              value: "587"
+            - name: EMAIL_POLL_INTERVAL
+              value: "60"
           resources:
             requests:
               memory: "128Mi"

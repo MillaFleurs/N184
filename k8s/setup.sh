@@ -167,10 +167,26 @@ OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-}"
 GEMINI_API_KEY="${GEMINI_API_KEY:-}"
 
+# Optional channel credentials
+SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN:-}"
+SLACK_APP_TOKEN="${SLACK_APP_TOKEN:-}"
+EMAIL_IMAP_HOST="${EMAIL_IMAP_HOST:-}"
+EMAIL_IMAP_USER="${EMAIL_IMAP_USER:-}"
+EMAIL_IMAP_PASS="${EMAIL_IMAP_PASS:-}"
+EMAIL_SMTP_HOST="${EMAIL_SMTP_HOST:-}"
+
 # Show which providers are configured
-[ -n "$OPENAI_API_KEY" ] && ok "OpenAI key found" || warn "OpenAI key not set (optional)"
-[ -n "$DEEPSEEK_API_KEY" ] && ok "DeepSeek key found" || warn "DeepSeek key not set (optional)"
-[ -n "$GEMINI_API_KEY" ] && ok "Gemini key found" || warn "Gemini key not set (optional)"
+echo ""
+info "Model providers:"
+[ -n "$OPENAI_API_KEY" ] && ok "  OpenAI" || warn "  OpenAI (not set)"
+[ -n "$DEEPSEEK_API_KEY" ] && ok "  DeepSeek" || warn "  DeepSeek (not set)"
+[ -n "$GEMINI_API_KEY" ] && ok "  Gemini" || warn "  Gemini (not set)"
+
+info "Messaging channels:"
+[ -n "$TELEGRAM_BOT_TOKEN" ] && ok "  Telegram" || warn "  Telegram (not set)"
+[ -n "$SLACK_BOT_TOKEN" ] && ok "  Slack" || warn "  Slack (not set)"
+[ -n "$EMAIL_IMAP_HOST" ] && ok "  Email (IMAP: $EMAIL_IMAP_HOST)" || warn "  Email (not set)"
+echo ""
 
 # TODO: Add support for local LLM servers (Ollama, llama.cpp, MLX).
 # When implemented, read OLLAMA_BASE_URL / LLAMA_CPP_BASE_URL / MLX_BASE_URL
@@ -183,8 +199,14 @@ kubectl create secret generic n184-api-keys \
   --from-literal=OPENAI_API_KEY="${OPENAI_API_KEY}" \
   --from-literal=DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY}" \
   --from-literal=GEMINI_API_KEY="${GEMINI_API_KEY}" \
+  --from-literal=SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN}" \
+  --from-literal=SLACK_APP_TOKEN="${SLACK_APP_TOKEN}" \
+  --from-literal=EMAIL_IMAP_HOST="${EMAIL_IMAP_HOST}" \
+  --from-literal=EMAIL_IMAP_USER="${EMAIL_IMAP_USER}" \
+  --from-literal=EMAIL_IMAP_PASS="${EMAIL_IMAP_PASS}" \
+  --from-literal=EMAIL_SMTP_HOST="${EMAIL_SMTP_HOST}" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-ok "API secrets configured"
+ok "Secrets configured"
 
 # ── Create Soul ConfigMaps ────────────────────────────────────────────
 

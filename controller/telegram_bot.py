@@ -1,7 +1,9 @@
-"""Telegram bot for N184 controller.
+"""Telegram channel for N184 controller.
 
 Receives messages from Telegram, publishes them to Honore via Redis.
 Receives outbound messages from agents via callback, sends to Telegram.
+
+Implements the Channel protocol (see channel.py).
 """
 
 from __future__ import annotations
@@ -27,8 +29,10 @@ logger = logging.getLogger(__name__)
 MAX_TELEGRAM_LENGTH = 4096
 
 
-class TelegramBot:
-    """Telegram bot that bridges user messages to Honore."""
+class TelegramChannel:
+    """Telegram channel — bridges user messages to Honore via Redis."""
+
+    prefix = "tg:"
 
     def __init__(
         self,
@@ -40,10 +44,9 @@ class TelegramBot:
         self.redis_bridge = redis_bridge
         self.assistant_name = assistant_name
         self._app: Application | None = None
-        # Map of chat_jid → telegram chat_id for outbound routing
         self._chat_map: dict[str, int] = {}
 
-    def build(self) -> Application:
+    def _build(self) -> Application:
         """Build the Telegram application."""
         self._app = (
             Application.builder()
@@ -59,6 +62,19 @@ class TelegramBot:
         )
 
         return self._app
+
+    async def start(self) -> None:
+        app = self._build()
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(drop_pending_updates=True)  # type: ignore[union-attr]
+        logger.info("Telegram channel started (polling)")
+
+    async def stop(self) -> None:
+        if self._app:
+            await self._app.updater.stop()  # type: ignore[union-attr]
+            await self._app.stop()
+            await self._app.shutdown()
 
     # ── Handlers ──────────────────────────────────────────────────────
 
