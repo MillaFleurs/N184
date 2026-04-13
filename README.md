@@ -1,8 +1,8 @@
 # N184
 
-N184 uses multi-model AI consensus (Claude, DeepSeek, ChatGPT, Gemini) to discover bugs and security vulnerabilities in codebases. Multiple agents independently analyze code and vote on findings, reducing false positives with actionable PRs. Named after element 184's island of stability.
+N184 uses multi-model AI consensus (Claude, DeepSeek, ChatGPT, Gemini) to find bugs and improve software stability. Multiple agents independently analyze code and vote on findings, reducing false positives with actionable PRs. Named after element 184's island of stability — because everyone deserves stable software.
 
-**AI-powered security and bug vulnerability analysis**
+**AI-powered bug discovery and software stability analysis**
 
 ---
 
@@ -24,7 +24,7 @@ N184 uses multi-model AI consensus (Claude, DeepSeek, ChatGPT, Gemini) to discov
 
 ## What is N184?
 
-N184 is an AI-powered bug and vulnerability discovery platform that deploys multiple AI agents to analyze codebases for security and stability issues.
+N184 is an AI-powered bug discovery platform that deploys multiple AI agents to analyze codebases for stability issues, logic errors, and security vulnerabilities.
 
 Its power comes from a few unique features that allow it to find bugs and security vulnerabilities that are often missed:
 
@@ -39,12 +39,13 @@ N184 is not theoretical. It has found and fixed bugs in OpenBSD, Apple MLX, Apac
 
 ### Key Features
 
+- **Stability First**: Finds crashes, logic errors, memory bugs, and stability issues — not just security vulnerabilities
 - **Multi-Model Swarm**: Claude, GPT, DeepSeek, Gemini, plus local models via Ollama/MLX (coming soon)
-- **Structured Output**: JSON findings with CVSS scores, CWE classifications, PoC code
+- **Structured Output**: JSON findings with suggested fixes, PoC code, and optional CVSS/CWE metadata
 - **Memory Palace**: Seven-hall knowledge store that makes agents smarter over time
 - **Kubernetes-Native**: Autoscaling agent swarms via k3s + KEDA (migration in progress)
 - **Multi-Channel**: Telegram, Slack, and Email for human-in-the-loop communication
-- **Security First**: Rootless containers, encrypted secrets, isolated execution
+- **Maintainer-Friendly**: Frames findings as stability improvements, not security alarms. Security framing used only when genuinely warranted.
 
 ---
 
@@ -255,9 +256,24 @@ N184/
 
 ## Design Philosophy
 
-**N184 is convergent evolution, not competition.** Glasswing proved the category exists. AISLE proved small models can outperform large ones with the right system design. N184 proves you don't need $100M to make software safer.
+**Stability over security theater.** N184's primary goal is making software more stable and correct. When we find a bug, we describe what breaks and how to fix it — not how an attacker might exploit it. Security vulnerabilities are a subset of bugs, and they get flagged clearly when warranted, but the default posture is "here's a bug, here's a fix."
 
-The adding machine didn't eliminate accountants. LLMs won't eliminate security researchers. They're force multipliers. N184 is the adding machine moment for vulnerability detection.
+**N184 is convergent evolution, not competition.** Glasswing proved the category exists. AISLE proved small models can outperform large ones with the right system design. N184 proves you don't need $100M to make software more stable.
+
+The adding machine didn't eliminate accountants. LLMs won't eliminate engineers. They're force multipliers. N184 is the adding machine moment for bug detection.
+
+---
+
+## MyMilla
+
+Back in October 2025, Dan got involved in the ARM AI Developer Hackathon. It was fun, and he experimented with a personal assistant called [MyMilla](https://github.com/MillaFleurs/MyMilla), named after his late cat. He learned a lot, and explored some Lisp-specific techniques like homoiconicity and how they applied to AI agents.
+
+He then realized there was no shortage of AI agent projects that did what MyMilla did — better, and easier. Several patterns from MyMilla have been integrated into N184:
+
+- **Memory DSL** (fact/desire/opinion/backlog) — ported to `n184/memory_dsl.py`, gives agents structured vocabulary for storing knowledge about the HIL and project context
+- **Self-edit safety model** — ported to `n184/self_edit.py`, provides 5-layer guarded self-modification (disabled by default, intent matching, path whitelisting, user confirmation, atomic backups)
+
+The MyMilla project is now archived. Rest well, Milla.
 
 ---
 
