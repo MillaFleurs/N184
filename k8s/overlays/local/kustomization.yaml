@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Local development (macOS with k3d)
+# k3d maps host volumes: ~/.n184 → /tmp/n184-palace
+
+resources:
+  - ../../base
+
+patches:
+  # Override PV hostPath for k3d volume mapping
+  - target:
+      kind: PersistentVolume
+      name: n184-palace-pv
+    patch: |
+      - op: replace
+        path: /spec/hostPath/path
+        value: /tmp/n184-palace
+  - target:
+      kind: PersistentVolume
+      name: n184-honore-sessions-pv
+    patch: |
+      - op: replace
+        path: /spec/hostPath/path
+        value: /tmp/n184-honore-sessions
+  # Smaller resource limits for local dev
+  - target:
+      kind: Deployment
+      name: honore
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1Gi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1"

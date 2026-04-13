@@ -1,0 +1,44 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Production (Linux server with k3s)
+# Direct hostPath to ~/.n184
+
+resources:
+  - ../../base
+
+patches:
+  # Use actual home directory paths on Linux
+  - target:
+      kind: PersistentVolume
+      name: n184-palace-pv
+    patch: |
+      - op: replace
+        path: /spec/hostPath/path
+        value: /home/n184/.n184
+  - target:
+      kind: PersistentVolume
+      name: n184-honore-sessions-pv
+    patch: |
+      - op: replace
+        path: /spec/hostPath/path
+        value: /home/n184/.claude
+  # Production resource limits
+  - target:
+      kind: Deployment
+      name: honore
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "4Gi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "4"
+  # Allow more Vautrin replicas in production
+  - target:
+      kind: ScaledJob
+      name: vautrin-scaledjob
+    patch: |
+      - op: replace
+        path: /spec/maxReplicaCount
+        value: 10

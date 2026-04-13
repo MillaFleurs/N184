@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: n184-palace-pv
+  labels:
+    app.kubernetes.io/part-of: n184
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  hostPath:
+    path: /home/node/.n184
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: n184.io/palace-node
+              operator: In
+              values: ["true"]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: n184-palace-pvc
+  namespace: n184
+  labels:
+    app.kubernetes.io/part-of: n184
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 10Gi
+---
+# Separate PV for Honore's Claude Code session persistence
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: n184-honore-sessions-pv
+  labels:
+    app.kubernetes.io/part-of: n184
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  hostPath:
+    path: /home/node/.claude
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: n184.io/palace-node
+              operator: In
+              values: ["true"]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: n184-honore-sessions-pvc
+  namespace: n184
+  labels:
+    app.kubernetes.io/part-of: n184
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 5Gi

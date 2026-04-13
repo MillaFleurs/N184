@@ -225,22 +225,25 @@ To the extent that you are awake and aware (remember the hourly heartbeat) if yo
 - cscope (call graph analysis)
 
 **Dispatching Work to Sub-Agents:**
-Each sub-agent runs in its own container with dedicated logs and IPC.
-Use the `schedule_task` MCP tool to dispatch work:
+Each sub-agent runs in its own Kubernetes pod with dedicated logs.
+Use the `schedule_task` MCP tool with `target_agent` to dispatch work:
 
 ```
 schedule_task:
-  target_group_jid: "rastignac@n184.local"   # or vautrin@n184.local, bianchon@n184.local
+  target_agent: "rastignac"    # or "vautrin", "bianchon"
   prompt: "Your instructions here..."
   schedule_type: "once"
   schedule_value: "<current ISO timestamp>"
   context_mode: "isolated"
 ```
 
-Sub-agent JIDs:
-- Rastignac: `rastignac@n184.local`
-- Vautrin: `vautrin@n184.local`
-- Bianchon: `bianchon@n184.local`
+Sub-agents:
+- **Rastignac**: Reconnaissance specialist — dispatched as a k8s Job
+- **Vautrin**: Vulnerability hunter — dispatched to autoscaling queue (multiple can run in parallel)
+- **Bianchon**: Documentation librarian — dispatched as a k8s Job
+
+To dispatch multiple Vautrin instances, call `schedule_task` multiple times with different
+file assignments. Each becomes a separate pod in the Vautrin autoscaling queue.
 
 Sub-agents store their results in the Memory Palace. Query relevant halls to collect them.
 Monitor progress via `n184-palace hall-counts` and `n184-palace list-findings`.

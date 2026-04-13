@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: honore
+  namespace: n184
+  labels:
+    app.kubernetes.io/name: honore
+    app.kubernetes.io/part-of: n184
+    n184.io/agent: honore
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: honore
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: honore
+        app.kubernetes.io/part-of: n184
+        n184.io/agent: honore
+    spec:
+      nodeSelector:
+        n184.io/palace-node: "true"
+      containers:
+        - name: honore
+          image: n184-agent:latest
+          imagePullPolicy: IfNotPresent
+          # Honore uses the persistent entrypoint (subscribes to Redis)
+          command: ["node", "/app/dist/honore-entrypoint.js"]
+          env:
+            - name: IPC_BACKEND
+              value: "redis"
+            - name: REDIS_URL
+              value: "redis://redis.n184.svc.cluster.local:6379"
+            - name: N184_AGENT_NAME
+              value: "honore"
+            - name: N184_GROUP_FOLDER
+              value: "main"
+            - name: N184_CHAT_JID
+              value: "telegram"
+            - name: ASSISTANT_NAME
+              value: "Honoré"
+            - name: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS
+              value: "1"
+            - name: CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD
+              value: "1"
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: n184-api-keys
+                  key: ANTHROPIC_API_KEY
+          volumeMounts:
+            - name: soul
+              mountPath: /workspace/group/CLAUDE.md
+              subPath: CLAUDE.md
+            - name: palace
+              mountPath: /home/node/.n184
+            - name: sessions
+              mountPath: /home/node/.claude
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "2"
+      volumes:
+        - name: soul
+          configMap:
+            name: n184-soul-honore
+        - name: palace
+          persistentVolumeClaim:
+            claimName: n184-palace-pvc
+        - name: sessions
+          persistentVolumeClaim:
+            claimName: n184-honore-sessions-pvc

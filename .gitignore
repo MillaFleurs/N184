@@ -8,3 +8,9 @@ build/
 \#*\#
 .#*
 __pycache__
+
+# Node.js
+node_modules/
+dist/
+agent-runner/dist/
+agent-runner/node_modules/

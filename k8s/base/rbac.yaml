@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: n184-controller
+  namespace: n184
+  labels:
+    app.kubernetes.io/part-of: n184
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: n184-controller-role
+  namespace: n184
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: n184-controller-binding
+  namespace: n184
+subjects:
+  - kind: ServiceAccount
+    name: n184-controller
+    namespace: n184
+roleRef:
+  kind: Role
+  name: n184-controller-role
+  apiGroup: rbac.authorization.k8s.io
