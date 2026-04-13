@@ -56,11 +56,11 @@ Human (HIL) <── Telegram / Slack / Email ──> Controller Pod
                                               Redis (pub/sub)
                                                   |
                                          Honoré (orchestrator)
-                                        /    |    \        \
-                                 Rastignac   |  Bianchon   Goriot
-                                  (recon)    |   (docs)    (consensus)
-                                             |
-                                       Vautrin Swarm
+                                       /   |    \     \        \
+                                Rastignac  |  Bianchon Goriot  Lousteau
+                                 (recon)   |   (docs)  (cons.) (memory)
+                                           |
+                                     Vautrin Swarm
                                     (KEDA autoscaled,
                                      multiple AI models)
                                              |
@@ -80,6 +80,7 @@ Characters from Honoré de Balzac's *La Comédie Humaine*:
 - **Vautrin**: The vulnerability hunter. Runs in swarms with different AI models.
 - **Rastignac**: Reconnaissance specialist. Maps codebases, identifies hotspots, builds code maps.
 - **Bianchon**: Documentation librarian. Checks findings against docs, filters features from bugs.
+- **Lousteau**: Memory Palace custodian. Maintains the seven halls, provides historical context, predicts maintainer responses. Cynical, world-weary, has seen every bug before.
 - **Goriot**: Consensus validator. Patient, methodical, brings agents together.
 
 Each character's traits map to their function. "Vautrin found it, but Goriot rejected it in consensus" is easier to parse than "Agent-001 found it, but Agent-004 rejected it."
@@ -227,7 +228,8 @@ N184/
 │   ├── claude-honore.md     #   Lead orchestrator
 │   ├── claude-vautrin.md    #   Vulnerability hunter
 │   ├── claude-rastignac.md  #   Reconnaissance specialist
-│   └── claude-bianchon.md   #   Documentation librarian
+│   ├── claude-bianchon.md   #   Documentation librarian
+│   └── claude-lousteau.md   #   Memory Palace custodian
 ├── SCOREBOARD.md            # Verified bugs found by N184
 ├── ROADMAP.md               # Feature roadmap
 ├── FAQ.md                   # Frequently asked questions
@@ -240,13 +242,14 @@ N184/
 ## How It Works
 
 1. Human gives Honoré a repository to analyze (via Telegram, Slack, or Email)
-2. Honoré initializes the Memory Palace and dispatches Rastignac to map the codebase
+2. Honoré dispatches Rastignac to map the codebase
 3. Rastignac produces a code map with prioritized files and git history patterns
 4. Honoré dispatches the Vautrin swarm — KEDA autoscales pods using different AI models
 5. Bianchon checks findings against documentation (feature vs bug)
-6. Goriot validates consensus across models (2/3 threshold)
-7. Honoré applies Devil's Advocate filtering and presents findings to the human
-8. Human feedback is stored in the Memory Palace, improving future analyses
+6. Lousteau searches the Memory Palace for historical precedent and cross-codebase patterns
+7. Goriot validates consensus across models (2/3 threshold)
+8. Honoré applies Devil's Advocate filtering and presents findings to the human
+9. Human feedback goes to Lousteau, who archives it in the Memory Palace for future analyses
 
 ---
 

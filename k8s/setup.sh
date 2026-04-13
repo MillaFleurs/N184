@@ -246,7 +246,7 @@ ok "Secrets configured"
 # ── Create Soul ConfigMaps ────────────────────────────────────────────
 
 info "Creating soul ConfigMaps..."
-for soul in honore vautrin rastignac bianchon; do
+for soul in honore vautrin rastignac bianchon lousteau; do
   SOUL_FILE="$N184_ROOT/souls/claude-${soul}.md"
   if [ -f "$SOUL_FILE" ]; then
     kubectl create configmap "n184-soul-${soul}" \

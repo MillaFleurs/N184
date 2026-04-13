@@ -22,6 +22,7 @@ SOUL_CONFIGMAPS = {
     "rastignac": "n184-soul-rastignac",
     "vautrin": "n184-soul-vautrin",
     "bianchon": "n184-soul-bianchon",
+    "lousteau": "n184-soul-lousteau",
 }
 
 NAMESPACE = "n184"

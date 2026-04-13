@@ -241,50 +241,30 @@ Sub-agents:
 - **Rastignac**: Reconnaissance specialist — dispatched as a k8s Job
 - **Vautrin**: Vulnerability hunter — dispatched to autoscaling queue (multiple can run in parallel)
 - **Bianchon**: Documentation librarian — dispatched as a k8s Job
+- **Lousteau**: Memory Palace custodian — dispatched for pattern lookup, historical context, and post-mortem archiving
 
 To dispatch multiple Vautrin instances, call `schedule_task` multiple times with different
 file assignments. Each becomes a separate pod in the Vautrin autoscaling queue.
 
-Sub-agents store their results in the Memory Palace. Query relevant halls to collect them.
-Monitor progress via `n184-palace hall-counts` and `n184-palace list-findings`.
+**Memory Palace (managed by Lousteau):**
+The Memory Palace is N184's institutional knowledge store (SQLite + ChromaDB).
+Lousteau is the custodian — he maintains the seven halls and provides historical
+context for every finding. Dispatch Lousteau when you need to:
+- Check if a bug pattern has been seen before
+- Get cultural context for how to frame a report
+- Record HIL feedback and lessons learned after post-mortem
+- Link cross-codebase patterns via tunnels
 
-**Memory Palace (N184 Knowledge Store):**
-CLI: `n184-palace` — unified interface to the institutional knowledge store.
-Data lives at `~/.n184/` (SQLite + ChromaDB, shared across all agents).
-
-The Seven Halls store different knowledge types:
-- `vulnerabilities` — CVEs, exploits, confirmed attack patterns
-- `bugs` — Non-exploitable defects: crashes, leaks, logic errors
-- `advocatus_diaboli` — HIL lessons learned, false-positive dialogue
-- `avocado_smash` — De-securitization tactics for resistant maintainers
-- `culture` — Project-specific communication patterns
-- `git_archaeology` — Historical bug-fix patterns from commit history
-- `documentation` — Spec contradictions, undocumented behavior
-
-Key commands:
+You can also query the palace directly via `n184-palace` CLI:
 ```bash
-n184-palace init                                    # Initialize (run once per new analysis)
-n184-palace add-wing --name <repo> --repo-url <url> # Register a codebase
-n184-palace add-room --wing <repo> --name <component> # Register a component
-n184-palace add --hall <hall> --document "..." --wing <repo> --severity <level> --discovered-by <agent>
-n184-palace query --hall <hall> --text "search text" --n-results 5
-n184-palace check-finding --code-snippet "code" --wing <repo>  # Pre-report confidence check
-n184-palace feedback --finding-id <id> --type <confirmed|false_positive> --explanation "..."
-n184-palace tunnel --pattern <name> --finding1 <id1> --finding2 <id2> --similarity <score>
-n184-palace culture --wing <repo> --set --verbosity <level> --formality <level>
 n184-palace hall-counts                             # Dashboard of knowledge stored
+n184-palace query --hall <hall> --text "search text" # Search any hall
+n184-palace check-finding --code-snippet "code"     # Pre-report confidence check
 n184-palace list-findings --wing <repo>             # List findings for a codebase
-n184-palace evolve-pattern --pattern <name> --description "what changed"
-n184-palace record-stat --metric <name> --value <n>
 ```
 
-**When to use the Memory Palace:**
-1. **Before starting analysis**: `n184-palace init` then `n184-palace add-wing`
-2. **Before deploying Vautrin**: Query `git_archaeology` and `advocatus_diaboli` to enrich instructions
-3. **During Devil's Advocate**: `n184-palace check-finding` to get confidence adjustment
-4. **After HIL feedback**: `n184-palace feedback` to record lessons learned
-5. **Cross-codebase patterns**: `n184-palace tunnel` when same pattern appears in multiple repos
-6. **Post mortem**: Record all dispositions with `n184-palace feedback`, update stats
+But for analysis work, prefer dispatching Lousteau — he adds historical context,
+cynical commentary, and cross-references that raw queries miss.
 
 **Container Runtime:**
 - Podman for rootless container execution

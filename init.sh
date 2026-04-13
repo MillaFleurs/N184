@@ -357,14 +357,14 @@ ok "Main group CLAUDE.md written (Honoré persona)"
 SOULS_DEST="$PROJECT_ROOT/groups/main/souls"
 mkdir -p "$SOULS_DEST"
 
-for soul in claude-honore.md claude-vautrin.md claude-rastignac.md claude-bianchon.md; do
+for soul in claude-honore.md claude-vautrin.md claude-rastignac.md claude-bianchon.md claude-lousteau.md; do
   if [ -f "$SOULS_DIR/$soul" ]; then
     cp "$SOULS_DIR/$soul" "$SOULS_DEST/$soul"
   else
     warn "Soul file $soul not found in $SOULS_DIR"
   fi
 done
-ok "Agent souls deployed to groups/main/souls/ (Honoré, Vautrin, Rastignac, Bianchon)"
+ok "Agent souls deployed to groups/main/souls/ (Honoré, Vautrin, Rastignac, Bianchon, Lousteau)"
 
 # ── Step 5b: Register main group ──────────────────────────────────────────
 
@@ -410,7 +410,8 @@ fi
 for agent_data in \
   "vautrin@n184.local|Vautrin|n184-vautrin|@Vautrin|claude-vautrin.md" \
   "rastignac@n184.local|Rastignac|n184-rastignac|@Rastignac|claude-rastignac.md" \
-  "bianchon@n184.local|Bianchon|n184-bianchon|@Bianchon|claude-bianchon.md"; do
+  "bianchon@n184.local|Bianchon|n184-bianchon|@Bianchon|claude-bianchon.md" \
+  "lousteau@n184.local|Lousteau|n184-lousteau|@Lousteau|claude-lousteau.md"; do
 
   IFS='|' read -r AGENT_JID AGENT_NAME AGENT_FOLDER AGENT_TRIGGER AGENT_SOUL <<< "$agent_data"
 

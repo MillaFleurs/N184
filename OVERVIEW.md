@@ -29,7 +29,8 @@ N184/
 │   ├── claude-honore.md   #   Lead orchestrator
 │   ├── claude-vautrin.md  #   Vulnerability hunter
 │   ├── claude-rastignac.md#   Reconnaissance specialist
-│   └── claude-bianchon.md #   Documentation librarian
+│   ├── claude-bianchon.md #   Documentation librarian
+│   └── claude-lousteau.md #   Memory Palace custodian
 ├── build/                 # Built NanoClaw instance (runtime artifacts)
 ├── __pycache__/           # Python bytecode cache (auto-generated)
 ├── README.md              # Project introduction and quick start
@@ -188,6 +189,19 @@ Named after the methodical doctor from Balzac. Filters out false positives by ch
 
 Prevents the common problem of reporting features as vulnerabilities (e.g., `--as-root` runs as root).
 
+### `claude-lousteau.md` -- Memory Palace Custodian
+
+Named after Étienne Lousteau, the jaded journalist from *Illusions Perdues*. Maintains all seven halls of the Memory Palace and provides historical context for every finding. Cynical, world-weary, has seen every bug pattern before.
+
+Responsibilities:
+- Pattern recognition — searches git archaeology for historical precedent
+- Cynical oracle — predicts maintainer responses based on culture profiles
+- Historical contextualization — annotates every bug with its genealogy across codebases
+- Post-mortem archiving — records HIL feedback, evolves patterns, tracks statistics
+- Cross-codebase tunneling — links identical patterns found in different projects
+
+Primary user of the `n184-palace` CLI. While other agents write to the palace, Lousteau reads, cross-references, and annotates.
+
 ---
 
 ## `init.sh` -- Bootstrap Script
@@ -287,15 +301,15 @@ Slide deck for presenting N184.
 Human (HIL) <--Telegram/CLI--> NanoClaw Container
                                     |
                                  Honoré (orchestrator)
-                                /   |   \        \
-                         Rastignac  |  Bianchon   Goriot
-                        (recon)     |  (docs)     (consensus)
-                                    |
-                              Vautrin Swarm
-                           (3-10 parallel hunters,
-                            different AI models)
-                                    |
-                                    v
+                               /   |    \     \        \
+                        Rastignac  |  Bianchon Goriot  Lousteau
+                         (recon)   |   (docs)  (cons.) (memory)
+                                   |
+                             Vautrin Swarm
+                          (autoscaled hunters,
+                           different AI models)
+                                   |
+                                   v
                             Memory Palace
                            /              \
                      SQLite DB         ChromaDB
@@ -304,12 +318,12 @@ Human (HIL) <--Telegram/CLI--> NanoClaw Container
 ```
 
 1. Human gives Honoré a repo to analyze
-2. Honoré spawns Rastignac to map the codebase
+2. Honoré dispatches Rastignac to map the codebase
 3. Rastignac produces a code map with prioritized files
-4. Honoré spawns Vautrin swarm (multiple models) targeting those files
+4. Honoré dispatches Vautrin swarm (multiple models) targeting those files
 5. Bianchon checks findings against documentation (feature vs bug)
-6. Goriot validates consensus across models (2/3 threshold)
-7. Honoré applies Devil's Advocate filtering
-8. Filtered findings presented to human for review
-9. Human feedback stored in Memory Palace (lessons learned)
-10. Palace knowledge improves future analyses
+6. Lousteau searches the Memory Palace for historical precedent and cross-codebase patterns
+7. Goriot validates consensus across models (2/3 threshold)
+8. Honoré applies Devil's Advocate filtering
+9. Filtered findings presented to human for review
+10. Human feedback goes to Lousteau, who archives it in the Memory Palace

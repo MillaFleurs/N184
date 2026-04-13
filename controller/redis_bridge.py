@@ -141,7 +141,7 @@ class RedisBridge:
                     "n184:vautrin-queue", json.dumps(container_input)
                 )
             logger.info("Pushed Vautrin task to scaling queue")
-        elif target_agent in ("rastignac", "bianchon"):
+        elif target_agent in ("rastignac", "bianchon", "lousteau"):
             # Create on-demand k8s Job
             session_id = await self.get_session_id(target_agent)
             job_name = await self.job_manager.create_agent_job(
