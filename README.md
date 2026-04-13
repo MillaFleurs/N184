@@ -6,7 +6,11 @@ N184 uses multi-model AI consensus (Claude, DeepSeek, ChatGPT, Gemini) to discov
 
 ---
 
-> **Migration Notice:** N184 is actively migrating from NanoClaw/Podman to a Kubernetes-native architecture. The `main` branch may be unstable during this transition. For a stable release, use the tagged version:
+> **Migration Notice:**
+>
+> I have a lot of experiments from when I was building N184 that need to be moved over now that we have a good, working, base version.
+>
+> N184 is actively migrating from NanoClaw/Podman to a Kubernetes-native architecture. The `main` branch may be unstable during this transition. For a stable release, use the tagged version:
 >
 > ```bash
 > git clone https://github.com/MillaFleurs/N184.git
