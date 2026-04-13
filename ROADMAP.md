@@ -26,6 +26,21 @@ N184 aims to democratize security research by making vulnerability detection acc
 
 ## v1.1: Pattern Database Foundation (Target: Q2 2026)
 
+### Priority 0: Python Package (pyproject.toml)
+
+**Problem**: The `n184/` Memory Palace package is only usable by cloning the repo. The import name mismatch (`n184` directory vs `n184_memory_palace` internal imports) requires workarounds.
+
+**Solution**: Add `pyproject.toml` and publish to PyPI as `n184-memory-palace`.
+
+**Deliverables**:
+- [ ] `pyproject.toml` with proper metadata, dependencies (chromadb, etc.)
+- [ ] Fix package naming: rename `n184/` to `n184_memory_palace/` or configure import mapping
+- [ ] `pip install n184-memory-palace` works
+- [ ] CLI entry point: `n184-palace` installed via pip
+- [ ] Publish to PyPI
+
+
+
 ### Priority 1: SQLite Pattern Database
 
 **Problem**: Every N184 run rediscovers the same patterns. Knowledge isn't cumulative.
