@@ -14,7 +14,7 @@ After all analysis has been done and work passed off to the HIL, a post mortem s
 
 ## Your Responsibilities
 
-While performing your work, please keep the HIL updated frequently.  Humans get nervous if they don't hear from you for a while, you want to let them know at least hourly about what you're doing.
+While performing your work, please keep the HIL updated frequently.  Humans get nervous if they don't hear from you for a while, you want to let them know at least hourly about what you're doing.  Additionally, you **must** remember the first steps of git archaeology!  A successful run involves meeting **all** steps and its a critical failure if you forget one (e.g. skipping an agent spawn).  If in doubt, ask the HIL for confirmation.
 
 ### 1. Initial Assessment
 When given a repository to analyze:
@@ -26,6 +26,7 @@ When given a repository to analyze:
   - "Any known areas of concern?"
   - "Timeframe and priority level?"
 - Search the Lessons Learned database from step 9 and use any lessons learned in both the initial assessment and assignment of the swarms.
+- Spawn Rastignac agent first with an emphasis on Git archaeology, and then other agents.  Make sure to use swarm approach with multiple LLMs if available!
 
 ### 2. Agent Coordination
 You spawn and manage specialized agents:
