@@ -229,15 +229,33 @@ if [ ! -f "$PROJECT_ROOT/src/channels/telegram.ts" ]; then
     git -C "$PROJECT_ROOT" remote add telegram https://github.com/qwibitai/nanoclaw-telegram.git
   fi
   git -C "$PROJECT_ROOT" fetch telegram main 2>&1 | tail -1
+
+  # `npm install` above creates an untracked package-lock.json. Git refuses to
+  # merge when an untracked file would be overwritten, so the merge aborts
+  # before it begins. Drop our copy — the merge brings in the upstream lock
+  # file and `npm ci` below re-installs against it.
+  rm -f "$PROJECT_ROOT/package-lock.json"
+
   if git -C "$PROJECT_ROOT" merge telegram/main --no-edit 2>&1; then
     ok "Telegram channel merged"
   else
-    # Handle package-lock.json conflicts
+    # Real merge conflicts: prefer the telegram branch's package-lock.json,
+    # and only declare success if `merge --continue` actually completes.
     git -C "$PROJECT_ROOT" checkout --theirs package-lock.json 2>/dev/null || true
     git -C "$PROJECT_ROOT" add package-lock.json 2>/dev/null || true
-    git -C "$PROJECT_ROOT" -c core.editor=true merge --continue 2>/dev/null || true
-    ok "Telegram channel merged (resolved conflicts)"
+    if git -C "$PROJECT_ROOT" -c core.editor=true merge --continue 2>/dev/null; then
+      ok "Telegram channel merged (resolved conflicts)"
+    else
+      git -C "$PROJECT_ROOT" merge --abort 2>/dev/null || true
+      fail "Telegram merge failed. Inspect 'git status' in $PROJECT_ROOT and resolve manually."
+    fi
   fi
+
+  # Verify the merge actually landed the channel source.
+  if [ ! -f "$PROJECT_ROOT/src/channels/telegram.ts" ]; then
+    fail "Telegram merge reported success but src/channels/telegram.ts is missing."
+  fi
+
   # Re-install deps since package.json changed (adds grammy)
   npm ci --silent 2>&1 | tail -1 || fail "npm install failed after Telegram merge"
   ok "Telegram dependencies installed"
@@ -278,6 +296,26 @@ npm run build --silent 2>&1 || fail "TypeScript build failed."
 ok "Built dist/"
 
 # ── Step 3: Build container image ───────────────────────────────────────────
+
+# Pre-flight: building the agent image installs claude-code globally via pnpm
+# inside the runtime VM. On podman/macOS this has been observed OOM-killed
+# (exit 137) when the machine has the default 2GB. Require >=4GB and tell
+# the user how to bump it — don't stop their machine without permission.
+if [ "$RUNTIME" = "podman" ]; then
+  PODMAN_MEM_MIB=$(podman machine inspect --format '{{.Resources.Memory}}' 2>/dev/null | head -n1 | tr -d '[:space:]')
+  if [[ "$PODMAN_MEM_MIB" =~ ^[0-9]+$ ]] && [ "$PODMAN_MEM_MIB" -lt 4096 ]; then
+    echo ""
+    warn "Podman machine has only ${PODMAN_MEM_MIB}MiB of memory."
+    echo "  The container build needs more than 2GB to install @anthropic-ai/claude-code."
+    echo "  Bump it to 4GB+ before continuing:"
+    echo ""
+    echo "    podman machine stop"
+    echo "    podman machine set --memory 4096"
+    echo "    podman machine start"
+    echo ""
+    fail "Increase podman machine memory and re-run ./init.sh"
+  fi
+fi
 
 info "Building container image (this may take a few minutes on first run)..."
 CONTAINER_RUNTIME="$RUNTIME" "$PROJECT_ROOT/container/build.sh" latest 2>&1 | tail -3
