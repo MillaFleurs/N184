@@ -6,11 +6,11 @@ Track record of verified security vulnerabilities and bugs discovered using N184
 
 ## Summary Statistics
 
-**Total Projects Analyzed:** 5
+**Total Projects Analyzed:** 6
 
-**Total Bugs Found:** 14
+**Total Bugs Found:** 17
 
-**Total Bugs Fixed:** 12
+**Total Bugs Fixed:** 15
 
 
 **Note on Ethical Disclosure:** 
@@ -46,6 +46,7 @@ This list is not exhaustive. Bugs covered by NDA or those deemed particularly se
 | 14 | Clickhouse | Interserver Mode Entered Before Secret Hash Verified | https://github.com/ClickHouse/ClickHouse/issues/99512 | Confirmed |
 | 15 | OpenBSD | rpki-client: fix pointer used in as_check_overlap() | https://github.com/openbsd/src/commit/566debf87d661c2ed816de66da56b8d23eb76465 | Fixed |
 | 16 | OpenBSD | At the end of parsing the http response header do some sanity checks | https://github.com/openbsd/src/commit/f97bb3898e4d5eef036c382a0c37dcd75c914318 | Fixed |
+| 17 | Systemd | Improve error logging for fstat failure | https://github.com/systemd/systemd/pull/41886#event-25020576441 | Fixed |
 
 Status Explanation:
 
@@ -106,6 +107,13 @@ Status Explanation:
 
 **Status:** Review ongoing.
 
+### 6. Systemd
+
+**Language:** C
+
+**Analysis Period:** April 2026
+
+**Status:** Reviewed as part of stress test of v.1.1 for N184
 
 ---
 **Last Updated:** April 7, 2026
