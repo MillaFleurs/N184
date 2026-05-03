@@ -6,9 +6,9 @@ Track record of verified security vulnerabilities and bugs discovered using N184
 
 ## Summary Statistics
 
-**Total Projects Analyzed:** 7
+**Total Projects Analyzed:** 8
 
-**Total Bugs Found:** 18
+**Total Bugs Found:** 19
 
 **Total Bugs Fixed:** 15
 
@@ -48,6 +48,7 @@ This list is not exhaustive. Bugs covered by NDA or those deemed particularly se
 | 16 | OpenBSD | At the end of parsing the http response header do some sanity checks | https://github.com/openbsd/src/commit/f97bb3898e4d5eef036c382a0c37dcd75c914318 | Fixed |
 | 17 | Systemd | Improve error logging for fstat failure | https://github.com/systemd/systemd/pull/41886#event-25020576441 | Fixed |
 | 18 | less | Memory Safety Issue in decode.c function expand_special_keys on malformed lesskey file #763 | https://github.com/gwsw/less/issues/763#issuecomment-4357928622 | Confirmed |
+| 19 | llm-d | P/D sidecar allowlist stores only pod IP, not host:port | https://github.com/llm-d/llm-d-inference-scheduler/issues/979 | Confirmed |
 
 Status Explanation:
 
@@ -123,6 +124,16 @@ Status Explanation:
 **Analysis Period:** April 2026
 
 **Status:** Reviewed as part of stress test of v.1.1 for N184
+
+
+### 8.  llm-d
+
+**Language:** Go
+
+**Analysis Period:** May 2026
+
+**Status:** Reviewed as part of stress test of v.1.1 for N184
+
 
 
 
