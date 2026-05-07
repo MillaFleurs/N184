@@ -10,7 +10,7 @@ Track record of verified security vulnerabilities and bugs discovered using N184
 
 **Total Bugs Found:** 20
 
-**Total Bugs Fixed:** 15
+**Total Bugs Fixed:** 16
 
 
 **Note on Ethical Disclosure:** 
@@ -47,7 +47,7 @@ This list is not exhaustive. Bugs covered by NDA or those deemed particularly se
 | 15 | OpenBSD | rpki-client: fix pointer used in as_check_overlap() | https://github.com/openbsd/src/commit/566debf87d661c2ed816de66da56b8d23eb76465 | Fixed |
 | 16 | OpenBSD | At the end of parsing the http response header do some sanity checks | https://github.com/openbsd/src/commit/f97bb3898e4d5eef036c382a0c37dcd75c914318 | Fixed |
 | 17 | Systemd | Improve error logging for fstat failure | https://github.com/systemd/systemd/pull/41886#event-25020576441 | Fixed |
-| 18 | less | Memory Safety Issue in decode.c function expand_special_keys on malformed lesskey file #763 | https://github.com/gwsw/less/issues/763#issuecomment-4357928622 | Confirmed |
+| 18 | less | Memory Safety Issue in decode.c function expand_special_keys on malformed lesskey file #763 | https://github.com/gwsw/less/issues/763#issuecomment-4357928622 | Fixed |
 | 19 | llm-d | P/D sidecar allowlist stores only pod IP, not host:port | https://github.com/llm-d/llm-d-inference-scheduler/issues/979 | Confirmed |
 | 20 | llm-d | EPP panics in default response parser on wrong-typed usage / token-count fields | https://github.com/llm-d/llm-d-inference-scheduler/issues/981 | Confirmed |
 
