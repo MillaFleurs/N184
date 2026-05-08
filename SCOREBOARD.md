@@ -6,9 +6,9 @@ Track record of verified security vulnerabilities and bugs discovered using N184
 
 ## Summary Statistics
 
-**Total Projects Analyzed:** 8
+**Total Projects Analyzed:** 9
 
-**Total Bugs Found:** 20
+**Total Bugs Found:** 21
 
 **Total Bugs Fixed:** 16
 
@@ -50,6 +50,7 @@ This list is not exhaustive. Bugs covered by NDA or those deemed particularly se
 | 18 | less | Memory Safety Issue in decode.c function expand_special_keys on malformed lesskey file #763 | https://github.com/gwsw/less/issues/763#issuecomment-4357928622 | Fixed |
 | 19 | llm-d | P/D sidecar allowlist stores only pod IP, not host:port | https://github.com/llm-d/llm-d-inference-scheduler/issues/979 | Confirmed |
 | 20 | llm-d | EPP panics in default response parser on wrong-typed usage / token-count fields | https://github.com/llm-d/llm-d-inference-scheduler/issues/981 | Confirmed |
+| 21 | top | top Ctrl-K doesn't sanitize for terminal escape characters | https://gitlab.com/procps-ng/procps/-/work_items/429 | Confirmed |
 
 Status Explanation:
 
@@ -136,9 +137,18 @@ Status Explanation:
 **Status:** Reviewed as part of stress test of v.1.1 for N184
 
 
+### 8.  procpcs
+
+**Language:** C
+
+**Analysis Period:** May 2026
+
+**Status:** Reviewed as part of stress test of v.1.1 for N184
+
+
 
 
 ---
-**Last Updated:** April 7, 2026
+**Last Updated:** Friday, May 8th, 2026
 **Maintained By:** Dan Anderson & A.L. Figaro
 **N184 Repository:** https://github.com/MillaFleurs/N184
