@@ -6,9 +6,9 @@ Track record of verified security vulnerabilities and bugs discovered using N184
 
 ## Summary Statistics
 
-**Total Projects Analyzed:** 10
+**Total Projects Analyzed:** 11
 
-**Total Bugs Found:** 23
+**Total Bugs Found:** 24
 
 **Total Bugs Fixed:** 18
 
@@ -53,6 +53,7 @@ This list is not exhaustive. Bugs covered by NDA or those deemed particularly se
 | 21 | top | top Ctrl-K doesn't sanitize for terminal escape characters | https://gitlab.com/procps-ng/procps/-/work_items/429 | Confirmed | |
 | 22 | dnsmasq | Malformed RRSIG Can Crash dnsmasq | https://lists.thekelleys.org.uk/pipermail/dnsmasq-discuss/2026q2/018472.html | Fixed | Independently Discovered CVE-2026-4891 |
 | 23 | dnsmasq | Malformed NSEC/NSEC3 Can Hang dnsmasq | https://lists.thekelleys.org.uk/pipermail/dnsmasq-discuss/2026q2/018473.html | Fixed | Independently Discovered CVE-2026-4890 |
+| 24 | fuchsia | [starnix] prctl(PR_SET_SECUREBITS) ignores SECBIT_*_LOCKED ratchet, letting a privileged process undo a permanent capability lockdown | https://issues.fuchsia.dev/issues/509210191 | Confirmed ||
 
 
 Status Explanation:
