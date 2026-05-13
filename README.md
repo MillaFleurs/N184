@@ -57,10 +57,10 @@ Human (HIL) <── Telegram / Slack / Email ──> Controller Pod
                                               Redis (pub/sub)
                                                   |
                                          Honoré (orchestrator)
-                                       /   |    \     \        \
-                                Rastignac  |  Bianchon Goriot  Lousteau
-                                 (recon)   |   (docs)  (cons.) (memory)
-                                           |
+                                       /   |    \     \        \      \
+                                Rastignac  | Bianchon Goriot Lousteau  Fil-de-Soie
+                                 (recon)   |  (docs)  (cons.) (memory)  (memory bugs,
+                                           |                              C/C++ only)
                                      Vautrin Swarm
                                     (KEDA autoscaled,
                                      multiple AI models)
@@ -71,6 +71,16 @@ Human (HIL) <── Telegram / Slack / Email ──> Controller Pod
                                SQLite DB         ChromaDB Server
                             (relationships)    (7 halls of verbatim
                                                 knowledge)
+
+Standalone fast-path:
+
+  Operator ──> ./action --pull-the-thread --target <repo>
+                  |
+                  v
+            Fil-de-Soie (local Claude CLI or k8s Job)
+                  |
+                  v
+          ~/.n184/scan-cache/<scan_id>-report.md
 ```
 
 ### Agent Naming Convention
@@ -83,6 +93,7 @@ Characters from Honoré de Balzac's *La Comédie Humaine*:
 - **Bianchon**: Documentation librarian. Checks findings against docs, filters features from bugs.
 - **Lousteau**: Memory Palace custodian. Maintains the seven halls, provides historical context, predicts maintainer responses. Cynical, world-weary, has seen every bug before.
 - **Goriot**: Consensus validator. Patient, methodical, brings agents together.
+- **Fil-de-Soie** (Sélérier): Memory-bug specialist. A pickpocket of the heap — light, quiet, focused on C/C++ allocation patterns. Baseline is OpenBSD-hardened libc. Runs standalone so non-LLM-fluent operators can get a clean memory-safety report without dancing with Honoré.
 
 Each character's traits map to their function. "Vautrin found it, but Goriot rejected it in consensus" is easier to parse than "Agent-001 found it, but Agent-004 rejected it."
 
@@ -152,6 +163,45 @@ cp .env.example .env
 # Edit .env
 ./init.sh
 ```
+
+### Option C: Standalone — `./action` CLI
+
+For operators who don't run the full k8s deployment (or who want a quick
+focused scan without engaging the orchestrator dialogue), N184 ships a
+generalized verb-dispatch CLI: `./action`. One verb per invocation, one
+target codebase, one report at the end.
+
+```bash
+# Memory-safety scan with Fil-de-Soie (C/C++ codebase, OpenBSD-hardened
+# libc baseline). Produces a clean Markdown report a non-LLM-fluent
+# maintainer can read and act on.
+./action --pull-the-thread --target ./my-codebase
+
+# Report lands at ~/.n184/scan-cache/<scan_id>-report.md
+# The CLI prints the exact path on completion.
+```
+
+By default `./action` runs the agent locally via the `claude` CLI (no
+k8s required). To dispatch through the full N184 deployment instead:
+
+```bash
+./action --pull-the-thread --target ./my-codebase --mode k8s
+```
+
+Other verbs (wired to the same dispatch system; some require their soul
+file to be present in `souls/`):
+
+| Verb | Agent | What it does |
+| --- | --- | --- |
+| `--pull-the-thread` | Fil-de-Soie | C/C++ memory-bug scan (heap/UAF/double-free/secret-wipe/etc.) |
+| `--reconnoiter` | Rastignac | Codebase reconnaissance and hotspot map |
+| `--hunt` | Vautrin | General vulnerability hunt |
+| `--consult-docs` | Bianchon | Documentation cross-check |
+| `--remember` | Lousteau | Memory-palace pattern lookup |
+
+`./action --help` lists every verb with its summary. To add a new verb,
+edit the `VERBS` registry at the top of `action` and drop the soul into
+`souls/claude-<agent>.md`.
 
 ### Monitoring
 
@@ -230,7 +280,12 @@ N184/
 │   ├── claude-vautrin.md    #   Vulnerability hunter
 │   ├── claude-rastignac.md  #   Reconnaissance specialist
 │   ├── claude-bianchon.md   #   Documentation librarian
-│   └── claude-lousteau.md   #   Memory Palace custodian
+│   ├── claude-lousteau.md   #   Memory Palace custodian
+│   ├── claude-fil-de-soie.md#   Memory-bug specialist (C/C++, OpenBSD baseline)
+│   └── refs/                #   Shared reference docs (bundled into pods
+│                            #   via the n184-refs ConfigMap)
+│       └── malloc-hardening.md  # OpenBSD malloc reference for Fil-de-Soie
+├── action                   # Standalone CLI: ./action --pull-the-thread ...
 ├── SCOREBOARD.md            # Verified bugs found by N184
 ├── ROADMAP.md               # Feature roadmap
 ├── FAQ.md                   # Frequently asked questions

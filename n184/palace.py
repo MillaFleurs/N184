@@ -19,7 +19,12 @@ from pathlib import Path
 from typing import Any
 
 from n184_memory_palace.chromadb_store import ChromaDBStore
-from n184_memory_palace.config import CHROMADB_PATH, HALLS, SQLITE_DB_PATH
+from n184_memory_palace.config import (
+    CHROMADB_PATH,
+    HALLS,
+    N184_HOME,
+    SQLITE_DB_PATH,
+)
 from n184_memory_palace.sqlite_store import SQLiteStore
 
 
@@ -263,13 +268,250 @@ class N184MemoryPalace:
                     f"cve={meta.get('cve_id', 'unknown')})"
                 )
 
+        # Bug shapes (distilled patterns with explicit signal direction).
+        # Positive shapes boost confidence, negative shapes veto strongly,
+        # conditional ones add a warning so Honoré has to think about it.
+        matching_shapes = self._match_shapes(
+            code_snippet=code_snippet,
+            pattern_name=pattern_name,
+            wing=wing,
+        )
+        shape_summaries: list[dict[str, Any]] = []
+        for shape in matching_shapes:
+            shape_summaries.append({
+                "shape_id": shape["shape_id"],
+                "name": shape["name"],
+                "signal": shape["signal"],
+                "criteria_text": shape["criteria_text"],
+                "rationale": shape.get("rationale"),
+            })
+            self.sqlite.increment_shape_match(shape["shape_id"])
+            if shape["signal"] == "negative":
+                # Strong veto — usually larger than the ChromaDB-similarity FP penalty
+                # because shapes are HIL-confirmed (lower false-veto rate).
+                confidence_delta -= 0.6
+                warnings.append(
+                    f"NEGATIVE shape match: {shape['name']} — "
+                    f"{shape['criteria_text']}. "
+                    f"Reject unless you can argue past the shape's rationale."
+                )
+            elif shape["signal"] == "positive":
+                confidence_delta += 0.3
+                warnings.append(
+                    f"POSITIVE shape match: {shape['name']} — "
+                    f"this kind of finding tends to be real. "
+                    f"Criteria: {shape['criteria_text']}"
+                )
+            else:  # conditional
+                warnings.append(
+                    f"CONDITIONAL shape match: {shape['name']} — "
+                    f"signal depends on context. Criteria: {shape['criteria_text']}"
+                )
+
         return {
             "confidence_delta": confidence_delta,
             "similar_fps": _extract_results(fp_results),
             "similar_archaeology": _extract_results(archaeology_results),
             "similar_vulns": _extract_results(vuln_results),
+            "matching_shapes": shape_summaries,
             "warnings": warnings,
         }
+
+    def _match_shapes(
+        self,
+        code_snippet: str,
+        pattern_name: str | None,
+        wing: str | None,
+    ) -> list[dict[str, Any]]:
+        """Find confirmed shapes whose criteria match this finding.
+
+        Matching is intentionally simple: substring + pattern_name. The
+        signal direction is what does the heavy lifting, not the matcher.
+        If a deployment needs fuzzy matching the shape criteria already
+        live as text and Lousteau can be asked to add a semantic match
+        layer; we don't bake that in here to keep the dependency surface
+        small.
+        """
+        shapes = self.sqlite.list_shapes(
+            wing_name=wing,
+            status="confirmed",
+            include_cross_wing=True,
+        )
+        if not shapes:
+            return []
+
+        snippet_lower = code_snippet.lower() if code_snippet else ""
+        pattern_lower = (pattern_name or "").lower()
+        # Stop-list of generic words that produce nuisance matches.
+        # Anything in here is excluded from the criteria token list even if
+        # it's long enough. Add to this when you see drift in practice.
+        STOP_TOKENS = {
+            "check", "checks", "checked", "validation", "size", "value",
+            "result", "without", "against", "comparing", "limits",
+        }
+        hits: list[dict[str, Any]] = []
+        for shape in shapes:
+            name_lower = shape["name"].lower()
+            criteria_lower = shape["criteria_text"].lower()
+            tokens = [
+                t for t in criteria_lower.split()
+                if len(t) > 4 and t not in STOP_TOKENS
+            ]
+            # Strongest signal: caller's pattern_name matches the shape's
+            # own name. This is the canonical Lousteau workflow ("the
+            # finding's pattern_name is *literally the shape name*").
+            if pattern_lower and (
+                pattern_lower == name_lower
+                or pattern_lower in name_lower
+                or name_lower in pattern_lower
+            ):
+                hits.append(shape)
+                continue
+            # Otherwise check distinctive criteria tokens against the snippet.
+            if snippet_lower and any(t in snippet_lower for t in tokens):
+                hits.append(shape)
+        return hits
+
+    # ── Bug Shapes ─────────────────────────────────────────────────────
+
+    def propose_shape(
+        self,
+        name: str,
+        signal: str,
+        criteria_text: str,
+        rationale: str | None = None,
+        exemplar_finding_id: int | None = None,
+        wing: str | None = None,
+        proposed_by: str = "lousteau",
+    ) -> int:
+        """Agent-side entry point: register a candidate shape for HIL review.
+
+        Lousteau calls this during post-mortem when it sees N near-identical
+        dispositions (e.g., three findings the HIL marked as 'Miss' that
+        all share the same root cause). Confirmed via palace.confirm_shape
+        once the HIL agrees.
+        """
+        return self.sqlite.propose_shape(
+            name=name,
+            signal=signal,
+            criteria_text=criteria_text,
+            rationale=rationale,
+            exemplar_finding_id=exemplar_finding_id,
+            wing_name=wing,
+            proposed_by=proposed_by,
+        )
+
+    def confirm_shape(self, shape_id: int, hil_name: str) -> None:
+        self.sqlite.confirm_shape(shape_id, hil_name)
+
+    def retire_shape(self, shape_id: int) -> None:
+        self.sqlite.retire_shape(shape_id)
+
+    def list_shapes(
+        self,
+        wing: str | None = None,
+        signal: str | None = None,
+        status: str | None = "confirmed",
+    ) -> list[dict[str, Any]]:
+        return self.sqlite.list_shapes(
+            wing_name=wing, signal=signal, status=status
+        )
+
+    def add_shape_edge(
+        self,
+        from_shape_id: int,
+        to_shape_id: int,
+        kind: str,
+        note: str | None = None,
+    ) -> int:
+        return self.sqlite.add_shape_edge(
+            from_shape_id, to_shape_id, kind, note
+        )
+
+    def regenerate_potstill(
+        self,
+        wing: str | None = None,
+        output_path: Path | None = None,
+    ) -> Path:
+        """Distill confirmed shapes into a markdown file agents read at the
+        start of analysis.
+
+        The file is a *derived view* — never edit it by hand. The SQLite
+        shape graph is the source of truth; this file exists because LLMs
+        absorb prose faster than they query databases.
+
+        Default output paths:
+            wing=None:           ~/.n184/potstill.md
+            wing="openbsd-rpki": ~/.n184/wings/openbsd-rpki/potstill.md
+        """
+        if output_path is None:
+            if wing:
+                output_path = N184_HOME / "wings" / wing / "potstill.md"
+            else:
+                output_path = N184_HOME / "potstill.md"
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        shapes = self.sqlite.list_shapes(
+            wing_name=wing, status="confirmed", include_cross_wing=True
+        )
+        # Group by signal so agents see vetoes first (highest leverage).
+        groups: dict[str, list[dict[str, Any]]] = {
+            "negative": [], "positive": [], "conditional": []
+        }
+        for shape in shapes:
+            groups[shape["signal"]].append(shape)
+
+        scope = wing if wing else "all codebases"
+        generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        lines: list[str] = []
+        lines.append(f"# Potstill — distilled bug shapes ({scope})")
+        lines.append("")
+        lines.append(
+            "_Auto-generated by Lousteau from the Memory Palace shape graph. "
+            "Do not edit by hand — edits will be overwritten. To change a shape, "
+            "use `n184-palace confirm-shape` / `retire-shape` and re-run "
+            "`regenerate-potstill`._"
+        )
+        lines.append("")
+        lines.append(f"Generated: {generated_at}")
+        lines.append(f"Confirmed shapes: {len(shapes)}")
+        lines.append("")
+
+        def fmt_shape(s: dict[str, Any]) -> str:
+            wing_tag = f" [{s['wing_name']}]" if s.get("wing_name") else " [all codebases]"
+            count = s.get("match_count") or 0
+            rationale = f"\n  - Why: {s['rationale']}" if s.get("rationale") else ""
+            return (
+                f"- **{s['name']}**{wing_tag} (matched {count}× to date)\n"
+                f"  - Criteria: {s['criteria_text']}{rationale}"
+            )
+
+        if groups["negative"]:
+            lines.append("## NEGATIVE — reject findings matching these")
+            lines.append("")
+            for s in groups["negative"]:
+                lines.append(fmt_shape(s))
+            lines.append("")
+        if groups["positive"]:
+            lines.append("## POSITIVE — these findings tend to be real")
+            lines.append("")
+            for s in groups["positive"]:
+                lines.append(fmt_shape(s))
+            lines.append("")
+        if groups["conditional"]:
+            lines.append("## CONDITIONAL — signal depends on context")
+            lines.append("")
+            for s in groups["conditional"]:
+                lines.append(fmt_shape(s))
+            lines.append("")
+
+        if not shapes:
+            lines.append("_No confirmed shapes yet for this scope._")
+            lines.append("")
+
+        output_path.write_text("\n".join(lines))
+        return output_path
 
     # ── Culture ────────────────────────────────────────────────────────
 

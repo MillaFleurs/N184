@@ -121,13 +121,18 @@ class RedisBridge:
         target_agent = data.get("targetAgent")
         prompt = data.get("prompt", "")
         schedule_type = data.get("schedule_type", "once")
+        provider = data.get("provider")
+        model = data.get("model")
 
         if not self.job_manager:
             logger.warning("No job_manager — cannot create agent Job")
             return
 
         if target_agent == "vautrin":
-            # Push to Vautrin scaling queue (KEDA watches this)
+            # Push to Vautrin scaling queue (KEDA watches this).
+            # The provider/model travel with the task so each Vautrin
+            # pod knows which backend to talk to — this is what makes
+            # the multi-model swarm actually multi-model.
             container_input = {
                 "prompt": prompt,
                 "groupFolder": f"n184-{target_agent}",
@@ -135,21 +140,35 @@ class RedisBridge:
                 "isMain": False,
                 "isScheduledTask": True,
                 "assistantName": "Vautrin",
+                "provider": provider,
+                "model": model,
             }
             if self._client:
                 await self._client.lpush(
                     "n184:vautrin-queue", json.dumps(container_input)
                 )
-            logger.info("Pushed Vautrin task to scaling queue")
-        elif target_agent in ("rastignac", "bianchon", "lousteau"):
+            logger.info(
+                "Pushed Vautrin task to scaling queue (provider=%s model=%s)",
+                provider or "<default>",
+                model or "<default>",
+            )
+        elif target_agent in ("rastignac", "bianchon", "lousteau", "fil-de-soie"):
             # Create on-demand k8s Job
             session_id = await self.get_session_id(target_agent)
             job_name = await self.job_manager.create_agent_job(
                 agent_name=target_agent,
                 prompt=prompt,
                 session_id=session_id,
+                provider=provider,
+                model=model,
             )
-            logger.info("Created %s Job: %s", target_agent, job_name)
+            logger.info(
+                "Created %s Job: %s (provider=%s model=%s)",
+                target_agent,
+                job_name,
+                provider or "<default>",
+                model or "<default>",
+            )
         else:
             # Generic task — schedule via target JID
             target_jid = data.get("targetJid", "")

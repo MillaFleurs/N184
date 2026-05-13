@@ -30,7 +30,11 @@ N184/
 │   ├── claude-vautrin.md  #   Vulnerability hunter
 │   ├── claude-rastignac.md#   Reconnaissance specialist
 │   ├── claude-bianchon.md #   Documentation librarian
-│   └── claude-lousteau.md #   Memory Palace custodian
+│   ├── claude-lousteau.md #   Memory Palace custodian
+│   ├── claude-fil-de-soie.md# Memory-bug specialist (C/C++, OpenBSD baseline)
+│   └── refs/              #   Shared reference docs (bundled into agent pods)
+│       └── malloc-hardening.md
+├── action                 # Standalone CLI: ./action --pull-the-thread ...
 ├── build/                 # Built NanoClaw instance (runtime artifacts)
 ├── __pycache__/           # Python bytecode cache (auto-generated)
 ├── README.md              # Project introduction and quick start
@@ -201,6 +205,40 @@ Responsibilities:
 - Cross-codebase tunneling — links identical patterns found in different projects
 
 Primary user of the `n184-palace` CLI. While other agents write to the palace, Lousteau reads, cross-references, and annotates.
+
+### `claude-fil-de-soie.md` -- Memory-Bug Specialist
+
+Named after Fil-de-Soie ("silk thread"), real name Sélérier, a thief in Vautrin's gang who appears in *Splendeurs et misères des courtisanes*. The pickpocket of the heap — light, quiet, focused.
+
+Scope is narrow on purpose: C/C++ memory management bugs only. Heap overflows, integer-overflow-driven undersized allocations, use-after-free, double-free, missing secret wipes, allocator-contract violations. The baseline of "correct" is OpenBSD's hardened libc (`reallocarray`, `recallocarray`, `freezero`, `malloc_conceal`), which gives a concrete principled standard to measure every allocation against.
+
+Responsibilities:
+- Inventory every allocation site in the target codebase
+- Follow each allocation thread from creation through use to free
+- Match against the N184-XXX risk-pattern catalog (see `souls/refs/malloc-hardening.md`)
+- Front-load every fact into a scan-cache JSON dump so Honoré's bounded Devil's Advocate pipeline can render verdicts without a dialogue refresh
+- Compose a clean Markdown report (`~/.n184/scan-cache/<scan_id>-report.md`) that a non-LLM-fluent maintainer can read and act on
+
+Designed for standalone invocation via `./action --pull-the-thread --target <repo>` so operators who don't want to dance with Honoré can still get a focused memory-safety report.
+
+---
+
+## `action` -- Standalone Verb-Dispatch CLI
+
+A generalized verb-dispatch CLI for invoking specialist agents on a target codebase without engaging the orchestrator dialogue. One verb per invocation, one target directory, one report at the end.
+
+Wired verbs:
+- `--pull-the-thread` → Fil-de-Soie (memory-bug scan)
+- `--reconnoiter` → Rastignac (recon and code map)
+- `--hunt` → Vautrin (general vuln hunt)
+- `--consult-docs` → Bianchon (documentation cross-check)
+- `--remember` → Lousteau (memory-palace lookup)
+
+Two modes:
+- `--mode local` (default): invokes the `claude` CLI directly with the agent's soul as the appended system prompt. No k8s required.
+- `--mode k8s`: pushes a `schedule_task` envelope onto `n184:tasks` so the controller dispatches a Job through the standard pipeline.
+
+Adding a new specialist agent is one entry in the `VERBS` registry at the top of the `action` script plus a soul file in `souls/claude-<agent>.md`.
 
 ---
 

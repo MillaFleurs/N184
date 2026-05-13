@@ -1,0 +1,40 @@
+# N184 Provider Registry — LOCAL OVERRIDES (template)
+#
+# Copy this to providers/registry.local.yaml and edit. The .local.yaml file
+# is .gitignored — your additions never get committed.
+#
+# Local entries are MERGED on top of providers/registry.yaml. To override
+# a default, redeclare the same key with new fields. To add a new provider,
+# add a fresh key.
+#
+# Remember: API keys go in your .env / the k8s Secret n184-api-keys, NOT
+# here. This file only declares which env var name the runtime should read.
+
+version: 1
+
+providers:
+  # Example 1: local Ollama (no API key needed)
+  ollama:
+    type: openai-compat
+    base_url: http://ollama.n184.svc.cluster.local:11434/v1
+    api_key_env: ""              # Ollama accepts requests with no auth
+    default_model: llama3
+    runtime: openai-sdk
+    notes: Local Ollama deployment. Free, but slower and lower-quality than frontier models.
+
+  # Example 2: a private LiteLLM proxy that fans out to many providers
+  # litellm:
+  #   type: openai-compat
+  #   base_url: http://litellm.internal:4000/v1
+  #   api_key_env: LITELLM_API_KEY
+  #   default_model: gpt-4o
+  #   runtime: openai-sdk
+  #   notes: Internal LiteLLM proxy. Lets Honoré route by tag.
+
+  # Example 3: override the default Anthropic model without touching the base file
+  # anthropic:
+  #   type: anthropic
+  #   base_url: https://api.anthropic.com
+  #   api_key_env: ANTHROPIC_API_KEY
+  #   default_model: claude-sonnet-4-6   # downgrade default for cost
+  #   runtime: claude-sdk

@@ -246,7 +246,7 @@ ok "Secrets configured"
 # ── Create Soul ConfigMaps ────────────────────────────────────────────
 
 info "Creating soul ConfigMaps..."
-for soul in honore vautrin rastignac bianchon lousteau; do
+for soul in honore vautrin rastignac bianchon lousteau fil-de-soie; do
   SOUL_FILE="$N184_ROOT/souls/claude-${soul}.md"
   if [ -f "$SOUL_FILE" ]; then
     kubectl create configmap "n184-soul-${soul}" \
@@ -258,6 +258,26 @@ for soul in honore vautrin rastignac bianchon lousteau; do
   fi
 done
 ok "Soul ConfigMaps created"
+
+# ── Create Reference Material ConfigMap ───────────────────────────────
+# Souls reference shared docs in souls/refs/ (e.g., the OpenBSD malloc
+# hardening doc Fil-de-Soie loads at scan start). Bundle the whole
+# directory into one ConfigMap mounted at /workspace/refs/ in every agent.
+REFS_DIR="$N184_ROOT/souls/refs"
+if [ -d "$REFS_DIR" ] && [ -n "$(ls -A "$REFS_DIR" 2>/dev/null)" ]; then
+  info "Creating reference-material ConfigMap..."
+  REFS_ARGS=()
+  for f in "$REFS_DIR"/*.md; do
+    [ -f "$f" ] && REFS_ARGS+=(--from-file="$(basename "$f")=$f")
+  done
+  if [ ${#REFS_ARGS[@]} -gt 0 ]; then
+    kubectl create configmap "n184-refs" \
+      --namespace n184 \
+      "${REFS_ARGS[@]}" \
+      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    ok "Reference ConfigMap created (n184-refs)"
+  fi
+fi
 
 # ── Build Container Images ────────────────────────────────────────────
 

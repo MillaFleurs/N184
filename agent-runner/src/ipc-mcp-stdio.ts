@@ -14,6 +14,7 @@ import fs from 'fs';
 import path from 'path';
 import { CronExpressionParser } from 'cron-parser';
 import { Redis as IORedis } from 'ioredis';
+import { getRegistry, type Provider } from './providers.js';
 
 const IPC_BACKEND = process.env.IPC_BACKEND || 'file';
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -120,7 +121,23 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
     schedule_value: z.string(),
     context_mode: z.enum(['group', 'isolated']).default('group'),
     target_group_jid: z.string().optional().describe('(Main only) Target group JID'),
-    target_agent: z.string().optional().describe('Target agent name (e.g., "rastignac", "vautrin", "bianchon")'),
+    target_agent: z.string().optional().describe('Target agent name (e.g., "rastignac", "vautrin", "bianchon", "lousteau", "fil-de-soie")'),
+    provider: z
+      .string()
+      .optional()
+      .describe(
+        'AI provider to dispatch this agent to. Must match a name registered in providers/registry.yaml ' +
+          '(default: "anthropic", "openai", "deepseek"; users may add more, e.g. "ollama"). ' +
+          'Use list_providers to see what is available. Omit to use the registry default.',
+      ),
+    model: z
+      .string()
+      .optional()
+      .describe(
+        'Model name within the chosen provider (e.g., "claude-opus-4-7", "gpt-4o", "deepseek-chat"). ' +
+          'Passed through opaquely — newly-released models work without code changes. ' +
+          'Omit to use the provider\'s default_model.',
+      ),
     script: z.string().optional().describe('Optional bash script to run before waking agent'),
   },
   async (args) => {
@@ -158,6 +175,37 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
       }
     }
 
+    // Validate provider against the registry. Model strings are passed
+    // through opaquely (no allowlist) so future model releases work.
+    if (args.provider) {
+      try {
+        const reg = getRegistry();
+        if (!reg.get(args.provider)) {
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text:
+                  `Unknown provider "${args.provider}". Registered providers: ${reg.names().join(', ')}. ` +
+                  'Use list_providers to inspect, or register_provider to add one.',
+              },
+            ],
+            isError: true,
+          };
+        }
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Provider registry error: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+
     const targetJid = isMain && args.target_group_jid ? args.target_group_jid : chatJid;
     const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -171,6 +219,8 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
       context_mode: args.context_mode || 'group',
       targetJid,
       targetAgent: args.target_agent || undefined,
+      provider: args.provider || undefined,
+      model: args.model || undefined,
       createdBy: groupFolder,
       agentName: AGENT_NAME,
       timestamp: new Date().toISOString(),
@@ -323,6 +373,122 @@ server.tool(
       timestamp: new Date().toISOString(),
     });
     return { content: [{ type: 'text' as const, text: `Group "${args.name}" registered.` }] };
+  },
+);
+
+// ── Provider Registry Tools ──────────────────────────────────────────
+//
+// These let Honoré introspect which AI backends are available and add
+// new ones at runtime (e.g., when a user spins up a local Ollama).
+// Runtime additions are in-memory only — they don't get written back
+// to providers/registry.yaml.
+
+server.tool(
+  'list_providers',
+  'List AI providers available for dispatching sub-agents (anthropic, openai, deepseek by default; users may add more like ollama). Returns provider name, type, default model, and runtime kind.',
+  {},
+  async () => {
+    try {
+      const reg = getRegistry();
+      const lines: string[] = [];
+      for (const p of reg.list()) {
+        const keyHint = p.api_key_env ? `key:${p.api_key_env}` : 'key:none';
+        lines.push(
+          `- ${p.name} (type=${p.type}, runtime=${p.runtime}, default_model=${p.default_model}, ${keyHint})${p.notes ? ` — ${p.notes}` : ''}`,
+        );
+      }
+      return {
+        content: [
+          { type: 'text' as const, text: `Registered providers:\n${lines.join('\n')}` },
+        ],
+      };
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `Provider registry error: ${err instanceof Error ? err.message : String(err)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  },
+);
+
+server.tool(
+  'register_provider',
+  `Register a new AI provider at runtime (in-memory only — not persisted to registry.yaml).
+Use this to hot-add a backend Honoré can dispatch agents against (e.g., a freshly-started
+Ollama service). To make a provider permanent, edit providers/registry.local.yaml in the
+repo and re-deploy.
+
+The api_key_env field is the NAME of the environment variable holding the key
+(e.g., "OPENAI_API_KEY"). The actual key value is never passed through this tool —
+it must already be present in the pod's environment (mounted from the n184-api-keys
+Secret). For providers that don't need a key (e.g., local Ollama), pass an empty string.`,
+  {
+    name: z.string().describe('Provider identifier (e.g., "ollama")'),
+    type: z
+      .enum(['anthropic', 'openai', 'openai-compat'])
+      .describe('Wire protocol family'),
+    base_url: z.string().describe('HTTP endpoint, e.g., "http://ollama.n184.svc.cluster.local:11434/v1"'),
+    api_key_env: z
+      .string()
+      .describe('NAME of the env var holding the API key, or "" if not needed. NEVER pass an actual key here.'),
+    default_model: z.string().describe('Model used when caller doesn\'t specify one'),
+    runtime: z.enum(['claude-sdk', 'openai-sdk']).describe('Which runtime entrypoint to launch'),
+    notes: z.string().optional(),
+  },
+  async (args) => {
+    // Refuse anything that looks like an API key was pasted into api_key_env.
+    // Real env-var names are uppercase identifiers; keys are typically long random strings.
+    if (args.api_key_env && (args.api_key_env.length > 64 || /[^A-Za-z0-9_]/.test(args.api_key_env))) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text:
+              `api_key_env looks like a value, not an env-var name. ` +
+              `Pass the NAME of the env var (e.g., "OPENAI_API_KEY"), not the secret itself.`,
+          },
+        ],
+        isError: true,
+      };
+    }
+    try {
+      const reg = getRegistry();
+      const provider: Provider = {
+        name: args.name,
+        type: args.type,
+        base_url: args.base_url,
+        api_key_env: args.api_key_env,
+        default_model: args.default_model,
+        runtime: args.runtime,
+        notes: args.notes ?? '',
+      };
+      reg.registerOverlay(provider);
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text:
+              `Provider "${args.name}" registered (in-memory). ` +
+              `To persist across restarts, add it to providers/registry.local.yaml.`,
+          },
+        ],
+      };
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `Failed to register provider: ${err instanceof Error ? err.message : String(err)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
   },
 );
 

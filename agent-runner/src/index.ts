@@ -42,6 +42,10 @@ interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   script?: string;
+  // Provider routing (set by JobManager from the registry).
+  // For the claude-sdk runtime we read `model`; the rest is for diagnostics.
+  provider?: string;
+  model?: string;
 }
 
 interface ContainerOutput {
@@ -455,10 +459,21 @@ async function runQuery(
   // MCP server name: n184 for k8s, nanoclaw for file-based compat
   const mcpServerName = IPC_BACKEND === 'redis' ? 'n184' : 'nanoclaw';
 
+  // Honoré dispatched this Job with an explicit provider+model. We only
+  // honor the model here; provider routing for non-Anthropic backends
+  // is handled by openai-entrypoint.ts (which the JobManager selects via
+  // the registry's runtime field). For claude-sdk runtime jobs the
+  // ANTHROPIC_BASE_URL env var (set by JobManager when the registry
+  // points at a proxy) is read by the SDK directly.
+  const dispatchedModel = (containerInput as { model?: string }).model
+    || process.env.N184_MODEL
+    || undefined;
+
   for await (const message of query({
     prompt: stream,
     options: {
       cwd: '/workspace/group',
+      model: dispatchedModel,
       additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
       resume: sessionId,
       resumeSessionAt: resumeAt,

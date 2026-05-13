@@ -3,6 +3,12 @@ build/
 .env.*
 !.env.example
 
+# Claude Code local project state (sessions, settings, hooks output)
+.claude/
+
+# Provider registry — local overrides may reference internal endpoints
+providers/registry.local.yaml
+
 # Emacs backup files
 *~
 \#*\#

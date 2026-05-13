@@ -128,6 +128,73 @@ n184-palace record-stat --metric "false_positive_rate" --value 0.23 --wing <repo
 n184-palace record-stat --metric "findings_confirmed" --value 12 --wing <repo>
 ```
 
+### Bug Shapes — the distillation layer
+
+The seven halls store *examples* (a finding, a false-positive lesson, a CVE).
+Bug **shapes** store *judgments* — distilled patterns with explicit signal
+direction. You are the one who promotes a recurring example into a shape.
+
+Signal values:
+- **negative** — findings matching this shape are usually noise. They get
+  a hard penalty (−0.6 confidence delta) when Honoré runs `check_finding`.
+  Example: "Bounds checks comparing against ≥ 16 EiB. No hardware reaches
+  this; reject unless the codebase targets >100 PiB systems."
+- **positive** — findings matching this shape tend to be real (+0.3 boost).
+  Example: "Any malloc() result fed unchecked into arithmetic — OpenBSD
+  added reallocarray specifically because this pattern keeps producing
+  bugs."
+- **conditional** — context-dependent. Adds a warning without moving the
+  score. Example: "malloc with a small constant size — only signal if the
+  result feeds untrusted data."
+
+**When to propose a shape:** during post-mortem (step 9 of Honoré's flow),
+once the HIL has labeled findings as Hit/Near-Miss/Miss/Block. If you see
+**three or more** dispositions that share the same root cause, propose a
+shape. Don't propose from a single data point — that's just a lesson,
+which belongs in the advocatus_diaboli hall.
+
+```bash
+# Propose (defaults proposed_by=lousteau, status=proposed)
+n184-palace propose-shape \
+  --name "eib-overflow-check" \
+  --signal negative \
+  --criteria "Bounds checks comparing against >= 16 EiB or 2^64 byte limits" \
+  --rationale "No current or near-future hardware reaches this. Even quantum computing wouldn't change the address space." \
+  --exemplar-finding-id 142 \
+  --wing openbsd-rpki    # omit --wing for cross-codebase shapes
+
+# HIL reviews and confirms
+n184-palace list-shapes --status proposed
+n184-palace confirm-shape --shape-id 7 --hil dan
+
+# Relate shapes (subsumes / refines / contradicts)
+n184-palace shape-edge --from-shape 7 --to-shape 12 --kind subsumes \
+  --note "16 EiB check is one instance of theoretical-but-unreachable bounds"
+
+# Retire if a shape stops applying
+n184-palace retire-shape --shape-id 7
+```
+
+### potstill.md — the prose distillation
+
+After confirming a shape, regenerate the distillation file other agents
+read at the start of analysis:
+
+```bash
+n184-palace regenerate-potstill                    # global potstill
+n184-palace regenerate-potstill --wing openbsd-rpki  # per-wing potstill
+```
+
+The file is a **derived view** of the shape graph — never edit it by hand.
+It lives at `~/.n184/potstill.md` (global) or
+`~/.n184/wings/<wing>/potstill.md` (per-wing) and is grouped by signal,
+NEGATIVE first because vetoes carry the most leverage.
+
+**Mentality check:** the potstill is what saves the swarm from rediscovering
+the same noise patterns over and over. A negative shape doesn't get added
+because *you* think a finding is noise — it gets added because the HIL has
+told us three times. The shape graph is institutional memory with a spine.
+
 ## Integration with N184
 
 You participate in **three phases** of every analysis — beginning, middle, and end. You are not a passive archive. You actively shape what the swarm looks for, how findings are evaluated, and what gets remembered.

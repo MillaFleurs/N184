@@ -1,0 +1,52 @@
+# N184 Provider Registry — k8s ConfigMap
+#
+# Mounts providers/registry.yaml (and optionally registry.local.yaml) into
+# every agent pod at /etc/n184/providers/. The provider loaders in
+# controller/providers.py and agent-runner/src/providers.ts both look
+# there first.
+#
+# DO NOT inline API keys here. ConfigMaps are world-readable inside the
+# namespace. Keys live in the n184-api-keys Secret; this ConfigMap only
+# declares which env-var name each provider reads.
+#
+# Refresh after editing providers/registry.yaml:
+#   kubectl create configmap n184-providers \
+#     --from-file=registry.yaml=providers/registry.yaml \
+#     --from-file=registry.local.yaml=providers/registry.local.yaml \
+#     --dry-run=client -o yaml | kubectl apply -n n184 -f -
+#
+# Or set up a kustomize configMapGenerator (see kustomization.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: n184-providers
+  namespace: n184
+  labels:
+    app.kubernetes.io/part-of: n184
+data:
+  # Default registry — kept in sync with providers/registry.yaml in the repo.
+  # If you edit this inline, also edit the repo file (or use configMapGenerator).
+  registry.yaml: |
+    version: 1
+    providers:
+      anthropic:
+        type: anthropic
+        base_url: https://api.anthropic.com
+        api_key_env: ANTHROPIC_API_KEY
+        default_model: claude-opus-4-7
+        runtime: claude-sdk
+        notes: Claude family. Default for Honoré.
+      openai:
+        type: openai
+        base_url: https://api.openai.com/v1
+        api_key_env: OPENAI_API_KEY
+        default_model: gpt-4o
+        runtime: openai-sdk
+        notes: OpenAI GPT family.
+      deepseek:
+        type: openai-compat
+        base_url: https://api.deepseek.com
+        api_key_env: DEEPSEEK_API_KEY
+        default_model: deepseek-chat
+        runtime: openai-sdk
+        notes: DeepSeek (OpenAI-compatible).

@@ -14,6 +14,8 @@ from typing import Any
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
+from providers import Resolved, get_registry
+
 logger = logging.getLogger(__name__)
 
 # Agent → ConfigMap name mapping
@@ -23,6 +25,7 @@ SOUL_CONFIGMAPS = {
     "vautrin": "n184-soul-vautrin",
     "bianchon": "n184-soul-bianchon",
     "lousteau": "n184-soul-lousteau",
+    "fil-de-soie": "n184-soul-fil-de-soie",
 }
 
 NAMESPACE = "n184"
@@ -32,15 +35,26 @@ PALACE_PVC = "n184-palace-pvc"
 
 
 def _api_key_envs() -> list[client.V1EnvVar]:
-    """Build env var list for all API keys from k8s Secret."""
-    keys = [
-        "ANTHROPIC_API_KEY",
-        "OPENAI_API_KEY",
-        "DEEPSEEK_API_KEY",
-        "GEMINI_API_KEY",
-    ]
-    envs = []
-    for key in keys:
+    """Build env var list for all API keys from k8s Secret.
+
+    We mount every key the registry might reference. The runtime then
+    reads the one named in N184_PROVIDER_API_KEY_ENV. Mounting all of
+    them is fine because keys missing from the Secret resolve to empty
+    strings (optional=True), and a runtime that doesn't need a key
+    simply ignores the env var.
+    """
+    # Discover every api_key_env name declared in the registry.
+    registry = get_registry()
+    key_names: set[str] = set()
+    for name in registry.names():
+        env_name = registry.get(name).api_key_env
+        if env_name:
+            key_names.add(env_name)
+    # ANTHROPIC_API_KEY is always required because Honoré itself runs on Claude.
+    key_names.add("ANTHROPIC_API_KEY")
+
+    envs: list[client.V1EnvVar] = []
+    for key in sorted(key_names):
         envs.append(
             client.V1EnvVar(
                 name=key,
@@ -53,10 +67,6 @@ def _api_key_envs() -> list[client.V1EnvVar]:
                 ),
             )
         )
-    # TODO: Add support for local LLM servers (Ollama, llama.cpp, MLX)
-    # When implemented, add env vars like:
-    #   OLLAMA_BASE_URL, LLAMA_CPP_BASE_URL, MLX_BASE_URL
-    # These would point to k8s Services running local model servers.
     return envs
 
 
@@ -97,14 +107,26 @@ class JobManager:
         session_id: str | None = None,
         chat_jid: str = "",
         timeout_seconds: int = 3600,
+        provider: str | None = None,
+        model: str | None = None,
     ) -> str:
         """Create a k8s Job for an agent.
 
         Writes ContainerInput to Redis, then creates the Job.
-        The Job's k8s-entrypoint.sh fetches input from Redis.
+        The Job's runtime entrypoint fetches input from Redis.
+
+        ``provider`` and ``model`` select which AI backend the agent
+        runs against. They are resolved against the provider registry
+        in ``providers/registry.yaml`` (+ optional ``registry.local.yaml``).
+        When ``provider`` is None the registry default (anthropic) is
+        used; when ``model`` is None the provider's default_model is used.
+        Model strings are passed through opaquely so newly-released models
+        work without code changes.
 
         Returns the Job name.
         """
+        resolved: Resolved = get_registry().resolve(provider, model)
+
         timestamp = int(time.time())
         job_name = f"{agent_name}-{timestamp}"
         soul_configmap = SOUL_CONFIGMAPS.get(agent_name, f"n184-soul-{agent_name}")
@@ -118,6 +140,8 @@ class JobManager:
             "isMain": False,
             "isScheduledTask": True,
             "assistantName": agent_name.capitalize(),
+            "provider": resolved.provider.name,
+            "model": resolved.model,
         }
         await self.redis_bridge.set_job_input(job_name, container_input)
 
@@ -153,7 +177,7 @@ class JobManager:
                                 name=agent_name,
                                 image=AGENT_IMAGE,
                                 image_pull_policy="IfNotPresent",
-                                command=["/app/k8s-entrypoint.sh"],
+                                command=resolved.runtime_command,
                                 env=[
                                     client.V1EnvVar(
                                         name="IPC_BACKEND", value="redis"
@@ -177,7 +201,14 @@ class JobManager:
                                         name="CHROMADB_PORT",
                                         value="8000",
                                     ),
-                                    # API keys for multi-model swarm
+                                    # Provider routing (no secrets — only routing info)
+                                    *[
+                                        client.V1EnvVar(name=k, value=v)
+                                        for k, v in resolved.env_overrides().items()
+                                    ],
+                                    # API keys (every registered provider's key
+                                    # is mounted; the runtime reads only the one
+                                    # named in N184_PROVIDER_API_KEY_ENV).
                                     *_api_key_envs(),
                                 ],
                                 volume_mounts=[
@@ -189,6 +220,16 @@ class JobManager:
                                     client.V1VolumeMount(
                                         name="palace",
                                         mount_path="/home/node/.n184",
+                                    ),
+                                    client.V1VolumeMount(
+                                        name="providers",
+                                        mount_path="/etc/n184/providers",
+                                        read_only=True,
+                                    ),
+                                    client.V1VolumeMount(
+                                        name="refs",
+                                        mount_path="/workspace/refs",
+                                        read_only=True,
                                     ),
                                 ],
                                 resources=client.V1ResourceRequirements(
@@ -208,6 +249,20 @@ class JobManager:
                                 name="palace",
                                 persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(
                                     claim_name=PALACE_PVC,
+                                ),
+                            ),
+                            client.V1Volume(
+                                name="providers",
+                                config_map=client.V1ConfigMapVolumeSource(
+                                    name="n184-providers",
+                                    optional=True,
+                                ),
+                            ),
+                            client.V1Volume(
+                                name="refs",
+                                config_map=client.V1ConfigMapVolumeSource(
+                                    name="n184-refs",
+                                    optional=True,
                                 ),
                             ),
                         ],

@@ -78,6 +78,10 @@ spec:
               value: "587"
             - name: EMAIL_POLL_INTERVAL
               value: "60"
+          volumeMounts:
+            - name: providers
+              mountPath: /etc/n184/providers
+              readOnly: true
           resources:
             requests:
               memory: "128Mi"
@@ -85,3 +89,8 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+      volumes:
+        - name: providers
+          configMap:
+            name: n184-providers
+            optional: true

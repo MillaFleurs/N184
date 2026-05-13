@@ -266,6 +266,77 @@ def cmd_record_stat(args: argparse.Namespace) -> None:
     palace.close()
 
 
+# ── Bug Shapes ─────────────────────────────────────────────────────────
+
+
+def cmd_propose_shape(args: argparse.Namespace) -> None:
+    palace = _palace()
+    palace.initialize()
+    shape_id = palace.propose_shape(
+        name=args.name,
+        signal=args.signal,
+        criteria_text=args.criteria,
+        rationale=args.rationale,
+        exemplar_finding_id=args.exemplar_finding_id,
+        wing=args.wing,
+        proposed_by=args.proposed_by,
+    )
+    _json_out({
+        "status": "ok",
+        "shape_id": shape_id,
+        "state": "proposed",
+        "note": "Awaiting HIL confirmation via `n184-palace confirm-shape`.",
+    })
+    palace.close()
+
+
+def cmd_confirm_shape(args: argparse.Namespace) -> None:
+    palace = _palace()
+    palace.initialize()
+    palace.confirm_shape(args.shape_id, args.hil)
+    _json_out({"status": "ok", "shape_id": args.shape_id, "state": "confirmed"})
+    palace.close()
+
+
+def cmd_retire_shape(args: argparse.Namespace) -> None:
+    palace = _palace()
+    palace.initialize()
+    palace.retire_shape(args.shape_id)
+    _json_out({"status": "ok", "shape_id": args.shape_id, "state": "retired"})
+    palace.close()
+
+
+def cmd_list_shapes(args: argparse.Namespace) -> None:
+    palace = _palace()
+    palace.initialize()
+    shapes = palace.list_shapes(
+        wing=args.wing, signal=args.signal, status=args.status
+    )
+    _json_out({"status": "ok", "count": len(shapes), "shapes": shapes})
+    palace.close()
+
+
+def cmd_shape_edge(args: argparse.Namespace) -> None:
+    palace = _palace()
+    palace.initialize()
+    edge_id = palace.add_shape_edge(
+        from_shape_id=args.from_shape,
+        to_shape_id=args.to_shape,
+        kind=args.kind,
+        note=args.note,
+    )
+    _json_out({"status": "ok", "edge_id": edge_id})
+    palace.close()
+
+
+def cmd_regenerate_potstill(args: argparse.Namespace) -> None:
+    palace = _palace()
+    palace.initialize()
+    path = palace.regenerate_potstill(wing=args.wing)
+    _json_out({"status": "ok", "wing": args.wing, "path": str(path)})
+    palace.close()
+
+
 # ── Parser ─────────────────────────────────────────────────────────────
 
 
@@ -380,6 +451,87 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--wing", default=None)
     p.add_argument("--hall", default=None)
 
+    # ── Bug Shapes ────────────────────────────────────────────────────
+
+    # propose-shape — Lousteau registers a candidate pattern for HIL review
+    p = sub.add_parser(
+        "propose-shape",
+        help="Propose a bug shape (awaits HIL confirmation)",
+    )
+    p.add_argument("--name", required=True, help="Short label, e.g. 'eib-overflow-check'")
+    p.add_argument(
+        "--signal",
+        required=True,
+        choices=["positive", "negative", "conditional"],
+        help="positive=real bugs, negative=noise, conditional=context-dependent",
+    )
+    p.add_argument(
+        "--criteria",
+        required=True,
+        help="What the shape matches, e.g. 'bounds checks comparing against >= 16 EiB'",
+    )
+    p.add_argument(
+        "--rationale",
+        default=None,
+        help="Why this signal applies (the WHY — what makes it noise or real)",
+    )
+    p.add_argument(
+        "--exemplar-finding-id",
+        type=int,
+        default=None,
+        help="Optional: ID of a finding that exemplifies this shape",
+    )
+    p.add_argument(
+        "--wing",
+        default=None,
+        help="Codebase scope. Omit for cross-wing (applies everywhere).",
+    )
+    p.add_argument("--proposed-by", default="lousteau")
+
+    # confirm-shape — HIL accepts the proposal
+    p = sub.add_parser("confirm-shape", help="HIL confirms a proposed shape")
+    p.add_argument("--shape-id", type=int, required=True)
+    p.add_argument("--hil", required=True, help="Name of the HIL confirming")
+
+    # retire-shape — shape no longer applies
+    p = sub.add_parser("retire-shape", help="Retire a shape (no longer applies)")
+    p.add_argument("--shape-id", type=int, required=True)
+
+    # list-shapes
+    p = sub.add_parser("list-shapes", help="List shapes")
+    p.add_argument("--wing", default=None)
+    p.add_argument("--signal", choices=["positive", "negative", "conditional"], default=None)
+    p.add_argument(
+        "--status",
+        choices=["proposed", "confirmed", "retired"],
+        default="confirmed",
+    )
+
+    # shape-edge
+    p = sub.add_parser(
+        "shape-edge",
+        help="Link two shapes (subsumes / refines / contradicts)",
+    )
+    p.add_argument("--from-shape", type=int, required=True)
+    p.add_argument("--to-shape", type=int, required=True)
+    p.add_argument(
+        "--kind",
+        required=True,
+        choices=["subsumes", "refines", "contradicts"],
+    )
+    p.add_argument("--note", default=None)
+
+    # regenerate-potstill
+    p = sub.add_parser(
+        "regenerate-potstill",
+        help="Regenerate potstill.md from the shape graph (derived view)",
+    )
+    p.add_argument(
+        "--wing",
+        default=None,
+        help="Wing scope. Omit for the global potstill.md.",
+    )
+
     return parser
 
 
@@ -400,6 +552,12 @@ COMMANDS = {
     "list-findings": cmd_list_findings,
     "evolve-pattern": cmd_evolve_pattern,
     "record-stat": cmd_record_stat,
+    "propose-shape": cmd_propose_shape,
+    "confirm-shape": cmd_confirm_shape,
+    "retire-shape": cmd_retire_shape,
+    "list-shapes": cmd_list_shapes,
+    "shape-edge": cmd_shape_edge,
+    "regenerate-potstill": cmd_regenerate_potstill,
 }
 
 

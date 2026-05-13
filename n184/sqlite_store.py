@@ -125,6 +125,48 @@ CREATE TABLE IF NOT EXISTS statistics (
     calculated_date TEXT
 );
 
+-- Bug Shapes: distilled patterns ("shapes") with explicit signal direction.
+-- A shape is a reusable judgment like "checks for >= 16 EiB disk size are
+-- almost always false positives" or "any malloc() result fed unchecked into
+-- arithmetic is worth investigating." The signal field is what makes these
+-- different from a free-form lessons-learned blob — it tells the agent
+-- whether matching this shape PROMOTES or VETOES a finding.
+--
+-- status flow: 'proposed' (Lousteau saw a pattern) -> 'confirmed' (HIL agreed)
+--              -> 'retired' (HIL revoked, or shape was wrong).
+-- wing_scope: NULL means "applies across all codebases" (cross-wing).
+CREATE TABLE IF NOT EXISTS bug_shapes (
+    shape_id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    signal TEXT NOT NULL CHECK(signal IN ('positive', 'negative', 'conditional')),
+    status TEXT NOT NULL CHECK(status IN ('proposed', 'confirmed', 'retired'))
+        DEFAULT 'proposed',
+    criteria_text TEXT NOT NULL,
+    rationale TEXT,
+    exemplar_finding_id INTEGER REFERENCES findings(finding_id),
+    wing_id INTEGER REFERENCES wings(wing_id),
+    proposed_by TEXT,
+    proposed_at TEXT,
+    confirmed_at TEXT,
+    confirmed_by_hil TEXT,
+    match_count INTEGER DEFAULT 0
+);
+
+-- Bug Shape Edges: directed relationships between shapes.
+-- kind values:
+--   subsumes   — from_shape is a broader class that includes to_shape
+--   refines    — from_shape narrows to_shape (with extra condition)
+--   contradicts — from_shape and to_shape disagree (one must be wrong)
+CREATE TABLE IF NOT EXISTS bug_shape_edges (
+    edge_id INTEGER PRIMARY KEY,
+    from_shape_id INTEGER NOT NULL REFERENCES bug_shapes(shape_id),
+    to_shape_id INTEGER NOT NULL REFERENCES bug_shapes(shape_id),
+    kind TEXT NOT NULL CHECK(kind IN ('subsumes', 'refines', 'contradicts')),
+    note TEXT,
+    created_at TEXT,
+    UNIQUE(from_shape_id, to_shape_id, kind)
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_findings_wing ON findings(wing_id);
 CREATE INDEX IF NOT EXISTS idx_findings_room ON findings(room_id);
@@ -132,6 +174,11 @@ CREATE INDEX IF NOT EXISTS idx_findings_hall ON findings(hall_id);
 CREATE INDEX IF NOT EXISTS idx_findings_pattern ON findings(pattern_name);
 CREATE INDEX IF NOT EXISTS idx_feedback_finding ON human_feedback(finding_id);
 CREATE INDEX IF NOT EXISTS idx_tunnels_pattern ON tunnels(pattern_name);
+CREATE INDEX IF NOT EXISTS idx_shapes_wing ON bug_shapes(wing_id);
+CREATE INDEX IF NOT EXISTS idx_shapes_status ON bug_shapes(status);
+CREATE INDEX IF NOT EXISTS idx_shapes_signal ON bug_shapes(signal);
+CREATE INDEX IF NOT EXISTS idx_shape_edges_from ON bug_shape_edges(from_shape_id);
+CREATE INDEX IF NOT EXISTS idx_shape_edges_to ON bug_shape_edges(to_shape_id);
 """
 
 
@@ -570,6 +617,145 @@ class SQLiteStore:
         query += " ORDER BY s.calculated_date DESC"
 
         return [dict(r) for r in self.conn.execute(query, params).fetchall()]
+
+    # ── Bug Shapes ─────────────────────────────────────────────────────
+
+    def propose_shape(
+        self,
+        name: str,
+        signal: str,
+        criteria_text: str,
+        rationale: str | None = None,
+        exemplar_finding_id: int | None = None,
+        wing_name: str | None = None,
+        proposed_by: str = "lousteau",
+    ) -> int:
+        """Insert a shape in 'proposed' state. Awaits HIL confirmation.
+
+        wing_name=None means the shape applies across all codebases.
+        """
+        if signal not in ("positive", "negative", "conditional"):
+            raise ValueError(f"signal must be positive/negative/conditional, got {signal!r}")
+
+        wing_id = None
+        if wing_name:
+            wing = self.get_wing(wing_name)
+            wing_id = wing["wing_id"] if wing else None
+
+        cur = self.conn.execute(
+            "INSERT INTO bug_shapes "
+            "(name, signal, status, criteria_text, rationale, exemplar_finding_id, "
+            " wing_id, proposed_by, proposed_at) "
+            "VALUES (?, ?, 'proposed', ?, ?, ?, ?, ?, ?)",
+            (name, signal, criteria_text, rationale, exemplar_finding_id,
+             wing_id, proposed_by, _now()),
+        )
+        self.conn.commit()
+        return cur.lastrowid  # type: ignore[return-value]
+
+    def confirm_shape(self, shape_id: int, hil_name: str) -> None:
+        """HIL has reviewed the proposed shape and accepted it."""
+        self.conn.execute(
+            "UPDATE bug_shapes SET status='confirmed', confirmed_at=?, confirmed_by_hil=? "
+            "WHERE shape_id=? AND status='proposed'",
+            (_now(), hil_name, shape_id),
+        )
+        self.conn.commit()
+
+    def retire_shape(self, shape_id: int) -> None:
+        """Mark a shape as no longer applicable. We keep the row so historical
+        findings still resolve their exemplar references."""
+        self.conn.execute(
+            "UPDATE bug_shapes SET status='retired' WHERE shape_id=?",
+            (shape_id,),
+        )
+        self.conn.commit()
+
+    def increment_shape_match(self, shape_id: int) -> None:
+        """Bump match_count whenever check_finding() matches this shape.
+
+        Useful for ranking which shapes are pulling weight (and which
+        proposed shapes have enough evidence to warrant HIL review).
+        """
+        self.conn.execute(
+            "UPDATE bug_shapes SET match_count = match_count + 1 WHERE shape_id=?",
+            (shape_id,),
+        )
+        self.conn.commit()
+
+    def get_shape(self, shape_id: int) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT * FROM bug_shapes WHERE shape_id=?", (shape_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def list_shapes(
+        self,
+        wing_name: str | None = None,
+        signal: str | None = None,
+        status: str | None = "confirmed",
+        include_cross_wing: bool = True,
+    ) -> list[dict[str, Any]]:
+        """List shapes, defaulting to confirmed ones.
+
+        When wing_name is set and include_cross_wing is True, shapes with
+        wing_id=NULL (cross-wing) are also included — they apply everywhere.
+        """
+        query = "SELECT s.*, w.name AS wing_name FROM bug_shapes s "
+        query += "LEFT JOIN wings w ON s.wing_id = w.wing_id"
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        if status:
+            conditions.append("s.status = ?")
+            params.append(status)
+        if signal:
+            conditions.append("s.signal = ?")
+            params.append(signal)
+        if wing_name:
+            wing = self.get_wing(wing_name)
+            wing_id = wing["wing_id"] if wing else None
+            if include_cross_wing:
+                conditions.append("(s.wing_id = ? OR s.wing_id IS NULL)")
+                params.append(wing_id)
+            else:
+                conditions.append("s.wing_id = ?")
+                params.append(wing_id)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY s.signal, s.match_count DESC, s.proposed_at DESC"
+
+        return [dict(r) for r in self.conn.execute(query, params).fetchall()]
+
+    def add_shape_edge(
+        self,
+        from_shape_id: int,
+        to_shape_id: int,
+        kind: str,
+        note: str | None = None,
+    ) -> int:
+        if kind not in ("subsumes", "refines", "contradicts"):
+            raise ValueError(f"kind must be subsumes/refines/contradicts, got {kind!r}")
+        if from_shape_id == to_shape_id:
+            raise ValueError("Shape cannot have an edge to itself")
+        cur = self.conn.execute(
+            "INSERT OR IGNORE INTO bug_shape_edges "
+            "(from_shape_id, to_shape_id, kind, note, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (from_shape_id, to_shape_id, kind, note, _now()),
+        )
+        self.conn.commit()
+        return cur.lastrowid  # type: ignore[return-value]
+
+    def shape_edges_for(self, shape_id: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT * FROM bug_shape_edges "
+            "WHERE from_shape_id=? OR to_shape_id=? "
+            "ORDER BY kind, edge_id",
+            (shape_id, shape_id),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def _now() -> str:

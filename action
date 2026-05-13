@@ -1,0 +1,372 @@
+#!/usr/bin/env python3
+"""N184 action — invoke a specialist agent on a target codebase.
+
+Usage:
+    ./action --pull-the-thread --target ./my-codebase
+    ./action --pull-the-thread --target ./my-codebase --mode k8s
+
+Verbs (one required per invocation):
+
+    --pull-the-thread    Fil-de-Soie: C/C++ memory-bug specialist
+                         (heap overflows, integer-overflow undersized
+                         allocations, use-after-free, double-free,
+                         missing secret wipes, allocator-contract bugs).
+                         Baseline is OpenBSD-hardened libc.
+
+    Future verbs (placeholders until wired):
+      --reconnoiter      Rastignac: codebase reconnaissance / hotspot map
+      --hunt             Vautrin: general vulnerability hunter
+      --consult-docs     Bianchon: documentation cross-check
+      --remember         Lousteau: memory-palace lookup
+
+Modes:
+
+    local (default)   Run the agent locally by invoking the `claude` CLI
+                      with the soul as system prompt. Best for standalone
+                      operators who don't have the k8s deployment running.
+                      Requires `claude` (Claude Code CLI) on PATH.
+
+    k8s               Push a task onto the N184 task queue. Requires the
+                      N184 k8s deployment running and reachable Redis at
+                      $N184_REDIS_URL (default redis://localhost:6379).
+
+Output:
+    Reports land in ~/.n184/scan-cache/<scan_id>-report.md and the path
+    is printed on completion.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+
+# ── Verb registry ─────────────────────────────────────────────────────
+# Adding a new specialist agent: add an entry here, drop the soul into
+# souls/claude-<agent>.md, and ./action --<flag> works immediately.
+
+VERBS: dict[str, dict[str, str]] = {
+    "pull-the-thread": {
+        "agent": "fil-de-soie",
+        "summary": "Fil-de-Soie: C/C++ memory-bug specialist (heap/UAF/double-free/etc.)",
+        "default_prompt": (
+            "Run a full memory-safety scan of the target codebase using the "
+            "methodology in your soul. Produce the scan-cache JSON dump and "
+            "the final Markdown report. Do not ask the operator clarifying "
+            "questions — this is standalone mode."
+        ),
+    },
+    "reconnoiter": {
+        "agent": "rastignac",
+        "summary": "Rastignac: codebase reconnaissance / hotspot map",
+        "default_prompt": (
+            "Build a code map of the target repository. Identify threat tiers, "
+            "the top 30 priority files, and the expected bug yield. Save the "
+            "map to the scan cache."
+        ),
+    },
+    "hunt": {
+        "agent": "vautrin",
+        "summary": "Vautrin: general vulnerability hunter",
+        "default_prompt": (
+            "Run a general vulnerability hunt on the target codebase. "
+            "Populate the scan context cache with full-context findings as "
+            "specified in your soul."
+        ),
+    },
+    "consult-docs": {
+        "agent": "bianchon",
+        "summary": "Bianchon: documentation cross-check",
+        "default_prompt": (
+            "Review the target repository's documentation. Flag inconsistencies "
+            "between documented behavior and actual behavior."
+        ),
+    },
+    "remember": {
+        "agent": "lousteau",
+        "summary": "Lousteau: memory-palace lookup",
+        "default_prompt": (
+            "Query the memory palace for patterns relevant to the target "
+            "codebase. Surface negative shapes (likely false positives) and "
+            "positive shapes (recurring real bugs)."
+        ),
+    },
+}
+
+
+REPO_ROOT = Path(__file__).resolve().parent
+SOULS_DIR = REPO_ROOT / "souls"
+REFS_DIR = SOULS_DIR / "refs"
+SCAN_CACHE = Path.home() / ".n184" / "scan-cache"
+
+
+# ── Argument parsing ──────────────────────────────────────────────────
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="action",
+        description="N184 action CLI — dispatch a specialist agent on a codebase.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    verb_group = parser.add_argument_group("verbs (exactly one required)")
+    for flag, meta in VERBS.items():
+        verb_group.add_argument(
+            f"--{flag}",
+            action="store_true",
+            help=meta["summary"],
+        )
+
+    parser.add_argument(
+        "--target",
+        type=Path,
+        required=True,
+        help="Path to the target codebase (directory).",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["local", "k8s"],
+        default="local",
+        help="Where to run the agent (default: local).",
+    )
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        default=None,
+        help="Override the default prompt for the selected verb.",
+    )
+    parser.add_argument(
+        "--scan-id",
+        type=str,
+        default=None,
+        help="Override the auto-generated scan_id (e.g., for retries).",
+    )
+    parser.add_argument(
+        "--redis-url",
+        type=str,
+        default=os.environ.get("N184_REDIS_URL", "redis://localhost:6379"),
+        help="Redis URL for --mode=k8s (default: $N184_REDIS_URL or localhost:6379).",
+    )
+    return parser
+
+
+def pick_verb(args: argparse.Namespace) -> tuple[str, dict[str, str]]:
+    """Return (flag, meta) for the one verb that was selected."""
+    chosen = [
+        (flag, VERBS[flag])
+        for flag in VERBS
+        if getattr(args, flag.replace("-", "_"))
+    ]
+    if len(chosen) == 0:
+        sys.exit(
+            "error: no verb specified. Pass one of: "
+            + ", ".join(f"--{f}" for f in VERBS)
+        )
+    if len(chosen) > 1:
+        sys.exit(
+            "error: more than one verb specified. Pick exactly one: "
+            + ", ".join(f"--{f}" for f in VERBS)
+        )
+    return chosen[0]
+
+
+# ── Execution paths ───────────────────────────────────────────────────
+
+
+def make_scan_id(agent: str, target: Path, override: str | None) -> str:
+    if override:
+        return override
+    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    return f"{agent}-{target.name}-{stamp}"
+
+
+def run_local(
+    agent: str,
+    flag: str,
+    soul_path: Path,
+    target: Path,
+    scan_id: str,
+    prompt: str,
+) -> int:
+    """Run the agent locally by invoking the `claude` CLI with the soul.
+
+    Assumes Claude Code CLI is installed and on PATH. The soul is appended
+    as a system prompt; the user prompt is the standalone-mode handoff
+    that tells the agent its scan_id, target, and where to put output.
+    """
+    claude_bin = shutil.which("claude")
+    if not claude_bin:
+        sys.exit(
+            "error: `claude` CLI not found on PATH. Install Claude Code "
+            "(https://docs.claude.com/claude-code) or use --mode=k8s."
+        )
+
+    SCAN_CACHE.mkdir(parents=True, exist_ok=True)
+    target_abs = target.resolve()
+    if not target_abs.is_dir():
+        sys.exit(f"error: --target is not a directory: {target_abs}")
+
+    cache_dump = SCAN_CACHE / f"{scan_id}.md"
+    report_path = SCAN_CACHE / f"{scan_id}-report.md"
+
+    soul = soul_path.read_text()
+
+    handoff = f"""# Standalone-mode invocation
+
+You have been invoked via `./action --{flag}` by a non-LLM-fluent operator.
+They expect a clean final report and no clarifying questions.
+
+Scan parameters:
+- scan_id: {scan_id}
+- target: {target_abs}
+- reference docs: {REFS_DIR} (also at /workspace/refs/ in k8s deploys)
+- write scan-cache JSON dump to: {cache_dump}
+- write final Markdown report to: {report_path}
+
+Run the methodology in your soul end-to-end. When the report is ready,
+print exactly one line to stdout:
+
+    REPORT: {report_path}
+
+Then exit. Do not ask the operator anything; if you genuinely cannot
+proceed (e.g., the target is not the language your soul expects), write
+a one-paragraph explanation to the report path and exit cleanly.
+
+{prompt}
+"""
+
+    print(f"[action] dispatching {agent} on {target_abs}")
+    print(f"[action] scan_id: {scan_id}")
+    print(f"[action] mode: local (claude CLI)")
+    print(f"[action] report will land at: {report_path}")
+    print()
+
+    # Run claude with the soul as the appended system prompt, the handoff
+    # as the user message, and the target directory as CWD so file reads
+    # are scoped correctly.
+    cmd = [
+        claude_bin,
+        "--append-system-prompt",
+        soul,
+        "--print",
+        handoff,
+    ]
+    try:
+        result = subprocess.run(cmd, cwd=str(target_abs))
+    except FileNotFoundError:
+        sys.exit(
+            "error: failed to invoke `claude`. Is Claude Code installed and "
+            "on PATH?"
+        )
+
+    if report_path.exists():
+        print()
+        print(f"[action] report ready: {report_path}")
+    else:
+        print()
+        print(
+            f"[action] warning: agent exited (code {result.returncode}) but "
+            f"no report at {report_path}. Check stdout above."
+        )
+
+    return result.returncode
+
+
+def run_k8s(
+    agent: str,
+    target: Path,
+    scan_id: str,
+    prompt: str,
+    redis_url: str,
+) -> int:
+    """Push a schedule_task command onto n184:tasks for the controller.
+
+    The controller's redis_bridge routes target_agent="fil-de-soie" (etc.)
+    to job_manager.create_agent_job, which spins up a k8s Job using the
+    soul ConfigMap.
+    """
+    try:
+        import redis  # type: ignore
+    except ImportError:
+        sys.exit(
+            "error: --mode=k8s requires the `redis` Python package. "
+            "Install with: pip install redis"
+        )
+
+    target_abs = target.resolve()
+    task = {
+        "type": "schedule_task",
+        "taskId": f"action-{int(time.time())}",
+        "prompt": (
+            f"{prompt}\n\n"
+            f"Target codebase: {target_abs}\n"
+            f"scan_id: {scan_id}\n"
+            f"This is a standalone --action invocation; do not ask the "
+            f"operator clarifying questions."
+        ),
+        "schedule_type": "once",
+        "schedule_value": datetime.now().isoformat(timespec="seconds"),
+        "context_mode": "isolated",
+        "targetAgent": agent,
+        "targetJid": "action-cli",
+        "createdBy": "action-cli",
+        "agentName": "action-cli",
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+    }
+
+    print(f"[action] dispatching {agent} on {target_abs}")
+    print(f"[action] scan_id: {scan_id}")
+    print(f"[action] mode: k8s (Redis at {redis_url})")
+    print()
+
+    try:
+        client = redis.Redis.from_url(redis_url, decode_responses=True)
+        client.lpush("n184:tasks", json.dumps(task))
+    except Exception as err:  # noqa: BLE001 — surface the cause to the operator
+        sys.exit(f"error: failed to push task to Redis: {err}")
+
+    print(
+        f"[action] task queued. The controller will create a k8s Job for "
+        f"{agent}. Watch with:\n"
+        f"    kubectl -n n184 get jobs -l n184.io/agent={agent} -w\n"
+        f"[action] When the agent completes, look in "
+        f"~/.n184/scan-cache/ on the palace PVC for the report."
+    )
+    return 0
+
+
+# ── Entry point ───────────────────────────────────────────────────────
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    flag, meta = pick_verb(args)
+    agent = meta["agent"]
+    soul_path = SOULS_DIR / f"claude-{agent}.md"
+
+    if not soul_path.is_file():
+        sys.exit(
+            f"error: soul file for {agent} not found at {soul_path}. "
+            f"This verb is not wired up yet."
+        )
+
+    prompt = args.prompt if args.prompt else meta["default_prompt"]
+    scan_id = make_scan_id(agent, args.target, args.scan_id)
+
+    if args.mode == "local":
+        return run_local(agent, flag, soul_path, args.target, scan_id, prompt)
+    return run_k8s(agent, args.target, scan_id, prompt, args.redis_url)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

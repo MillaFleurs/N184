@@ -79,6 +79,9 @@ spec:
               mountPath: /home/node/.n184
             - name: sessions
               mountPath: /home/node/.claude
+            - name: providers
+              mountPath: /etc/n184/providers
+              readOnly: true
           resources:
             requests:
               memory: "512Mi"
@@ -96,3 +99,7 @@ spec:
         - name: sessions
           persistentVolumeClaim:
             claimName: n184-honore-sessions-pvc
+        - name: providers
+          configMap:
+            name: n184-providers
+            optional: true

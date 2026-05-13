@@ -1,0 +1,52 @@
+# N184 Provider Registry — DEFAULTS
+#
+# Declares the provider "shapes" Honoré can dispatch agents against.
+# This file contains NO API keys — only references to environment variables
+# (which are populated from k8s Secret n184-api-keys / your local .env).
+#
+# To add a provider for your own deployment (e.g. local Ollama), copy
+# providers/registry.local.yaml.example to providers/registry.local.yaml
+# and edit it. registry.local.yaml is .gitignored — your overrides never
+# get committed.
+#
+# Field reference:
+#   type           Wire protocol family. One of: anthropic, openai, openai-compat
+#   base_url       HTTP endpoint the runtime will hit
+#   api_key_env    Name of the env var holding the API key (or "" if not needed)
+#   default_model  Model used when caller doesn't specify one
+#   runtime        Which agent-runner entrypoint to launch:
+#                    - claude-sdk : agent-runner/dist/index.js (Anthropic)
+#                    - openai-sdk : agent-runner/dist/openai-entrypoint.js
+#   notes          Free-text. Honoré can show this when listing providers.
+#
+# Model strings are passed through as opaque values. There is intentionally
+# no model allowlist — when gpt-5.5 or claude-opus-9 ships, dispatch works
+# without a code change. The registry only validates that the provider
+# exists; the model string travels untouched into the runtime.
+
+version: 1
+
+providers:
+  anthropic:
+    type: anthropic
+    base_url: https://api.anthropic.com
+    api_key_env: ANTHROPIC_API_KEY
+    default_model: claude-opus-4-7
+    runtime: claude-sdk
+    notes: Claude family. Default for Honoré and Devil's Advocate work.
+
+  openai:
+    type: openai
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    default_model: gpt-4o
+    runtime: openai-sdk
+    notes: OpenAI GPT family. Future model names (gpt-5, gpt-5.5, ...) work without code changes — pass any model string through.
+
+  deepseek:
+    type: openai-compat
+    base_url: https://api.deepseek.com
+    api_key_env: DEEPSEEK_API_KEY
+    default_model: deepseek-chat
+    runtime: openai-sdk
+    notes: DeepSeek (OpenAI-compatible API). Useful as a low-cost Vautrin model in the swarm.

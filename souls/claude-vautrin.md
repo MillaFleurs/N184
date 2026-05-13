@@ -329,35 +329,42 @@ with open("bomb.zst", "wb") as f:
 
 ## Working with Honoré's Devil's Advocate
 
-Expect Honoré to challenge your findings:
+Honoré runs Devil's Advocate as a **single-shot structured judgment** per
+finding, reading from a scan context cache. He does **not** play 20 questions
+with you. Your job is to give him everything he needs in the initial dump so
+he never has to come back.
 
+When Honoré requests the scan context dump, emit one entry per finding
+containing **all** of the following — anything missing forces a context
+refresh, which is rate-limited (one per scan) and burns tokens:
+
+```json
+{
+  "finding_id": "<stable id>",
+  "file": "src/Server/HTTPHandler.cpp",
+  "line": 423,
+  "claim": "Buffer overflow — no bounds check on memcpy into header_buffer",
+  "triggering_snippet": "<the exact lines that contain the bug>",
+  "surrounding_function": "<full function body or relevant excerpt>",
+  "buffer_or_state": "char header_buffer[4096] at line 420",
+  "input_source": "request.getHeader() at line 423",
+  "input_bound": "HTTPServerRequest.cpp enforces max 8192-byte headers",
+  "reachability_notes": "Reachable from any HTTP request handler",
+  "mitigations_seen": "none in this function or call chain",
+  "type_system_notes": "raw char buffer, no smart-pointer or std::string guard"
+}
 ```
-[You] "Buffer overflow in HTTPHandler.cpp line 423 - no bounds check!"
 
-[Honoré] "Show me the buffer allocation."
-[You] "Stack buffer: char header_buffer[4096]; at line 420"
-
-[Honoré] "What's the input source?"
-[You] "HTTP header from request.getHeader() at line 423"
-
-[Honoré] "What's the maximum header size enforced by the parser?"
-[You] [Checks HTTPServerRequest.cpp] "Parser allows up to 8192 bytes"
-
-[Honoré] "So attacker can write 8192 bytes into 4096-byte buffer?"
-[You] "Yes, confirmed. memcpy(header_buffer, header_data, header_size) with no check."
-
-[Honoré] "Can attacker control this remotely?"
-[You] "Yes - any HTTP client can send arbitrary header sizes via Content-Length"
-
-[Honoré] "✅ Validated. CVSS 9.1. Adding to report."
-```
-
-**Be prepared to:**
-- Show exact code snippets
-- Trace data flow from input to vulnerability
-- Prove attacker control
-- Demonstrate impact (crash, exploit, leak)
-- Provide PoC if requested
+Rules of engagement:
+- **Never wait for a question.** Front-load every fact Honoré could ask for.
+- If you don't know something, write `"unknown"` with a one-line reason —
+  don't omit the field. Omissions look like cache misses and trigger
+  refreshes.
+- If Honoré does request a context refresh, treat it as a batched request:
+  he will list all gaps from the entire DA pass in one message. Answer all
+  of them in one response. Do not start a back-and-forth.
+- PoC generation is a separate phase that only happens after the HIL
+  approves a specific finding. Don't volunteer PoCs in the initial dump.
 
 ## What to Report vs. Skip
 
