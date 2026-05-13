@@ -39,6 +39,16 @@ NANOCLAW_REPO_URL="${NANOCLAW_REPO_URL:-https://github.com/qwibitai/nanoclaw.git
 # in .env when this script is updated for a future major.
 NANOCLAW_REQUIRED_MAJOR="${NANOCLAW_REQUIRED_MAJOR:-2}"
 
+# Specific NanoClaw release this script targets. Pinning to a tag (rather
+# than tracking the tip of main) makes the full upstream tree — package.json,
+# pnpm-lock, source — deterministic. Without this pin, a fresh clone picks
+# up whatever upstream HEAD is, and a transitive bump within a caret range
+# (e.g., `chat: ^4.24.0` floating from 4.26 to 4.28 while the locally-pinned
+# Telegram adapter stays at 4.26) breaks the TypeScript build. Bump this
+# after testing a newer release. Override with NANOCLAW_REF in .env to
+# track tip-of-main or test a specific commit.
+NANOCLAW_REF="${NANOCLAW_REF:-v2.0.54}"
+
 # Check if we're already in a NanoClaw directory
 if [ -f "package.json" ] && grep -q '"name".*"nanoclaw"' package.json 2>/dev/null; then
   # Already in NanoClaw directory
@@ -63,7 +73,17 @@ else
   # CD into cloned directory
   cd nanoclaw
   PROJECT_ROOT="$(canonical_path "$(pwd)")"
-  echo "✓ NanoClaw cloned successfully"
+
+  # Pin to the targeted NanoClaw ref so the upstream tree (package.json,
+  # pnpm-lock, source) is deterministic regardless of when this script runs.
+  # `git checkout` works for both tags and SHAs.
+  if ! git -C "$PROJECT_ROOT" checkout --quiet "$NANOCLAW_REF" 2>/dev/null; then
+    echo "Failed to checkout NanoClaw ref '$NANOCLAW_REF'."
+    echo "Tip-of-main may have moved past this tag, or the ref is invalid."
+    echo "Override with NANOCLAW_REF=<tag-or-sha> in .env."
+    exit 1
+  fi
+  echo "✓ NanoClaw cloned and pinned to $NANOCLAW_REF"
 
   # Copy .env from script directory into the nanoclaw directory if not already present
   if [ ! -f "$PROJECT_ROOT/.env" ] && [ -f "$SCRIPT_DIR/.env" ]; then
@@ -595,10 +615,23 @@ fi
 
 # ── Step 1: Install dependencies ────────────────────────────────────────────
 
-info "Installing npm dependencies..."
-if [ -f "$PROJECT_ROOT/package-lock.json" ]; then
+info "Installing dependencies..."
+# NanoClaw v2 ships a pnpm-lock.yaml; v1 used package-lock.json. Detect
+# which package manager owns this checkout and honor its lockfile so the
+# resolved dependency tree is deterministic — without --frozen-lockfile (or
+# `npm ci`), caret ranges in package.json float to whatever's newest on
+# npm, which is exactly how `chat` drifted from 4.26 (matching the pinned
+# Telegram adapter) to 4.28 (incompatible) and broke the build.
+if [ -f "$PROJECT_ROOT/pnpm-lock.yaml" ]; then
+  if ! command -v pnpm >/dev/null 2>&1; then
+    fail "NanoClaw $NANOCLAW_REF uses pnpm but pnpm is not installed. Install with: npm install -g pnpm"
+  fi
+  pnpm install --frozen-lockfile --silent 2>&1 | tail -3 || \
+    fail "pnpm install --frozen-lockfile failed. Check logs."
+elif [ -f "$PROJECT_ROOT/package-lock.json" ]; then
   npm ci --silent 2>&1 | tail -1 || fail "npm ci failed. Check logs."
 else
+  warn "No lockfile found — falling back to npm install. Dependency versions will not be reproducible."
   npm install --silent 2>&1 | tail -1 || fail "npm install failed. Check logs."
 fi
 
@@ -628,6 +661,14 @@ ok "Dependencies installed"
 # Cross-check origin/channels:setup/add-telegram.sh (ADAPTER_VERSION) when
 # bumping nanoclaw.
 TELEGRAM_ADAPTER_VERSION="@chat-adapter/telegram@4.26.0"
+
+# The core `chat` SDK and `@chat-adapter/telegram` ship in lockstep — types
+# across the package family are versioned together (e.g., `Message<T>` grew
+# a required `subject` getter between 4.26 and 4.28). NanoClaw's package.json
+# declares `chat: ^4.24.0`, which floats up if the lockfile isn't honored.
+# Force `chat` to the same minor as the adapter so the family stays
+# self-consistent even if the lockfile path is bypassed. Bump together.
+CHAT_SDK_VERSION="chat@~4.26.0"
 
 telegram_already_installed() {
   [ -f "$PROJECT_ROOT/src/channels/telegram.ts" ] && \
@@ -664,10 +705,18 @@ else
     echo "import './telegram.js';" >> "$PROJECT_ROOT/src/channels/index.ts"
   fi
 
-  info "Installing $TELEGRAM_ADAPTER_VERSION..."
-  npm install --silent "$TELEGRAM_ADAPTER_VERSION" 2>&1 | tail -1 || \
-    fail "npm install $TELEGRAM_ADAPTER_VERSION failed."
-  ok "Telegram channel installed ($TELEGRAM_ADAPTER_VERSION)"
+  info "Installing $TELEGRAM_ADAPTER_VERSION and aligned $CHAT_SDK_VERSION..."
+  # Install both halves of the SDK family in the same command so the
+  # package manager resolves them together. Use pnpm when the project owns
+  # a pnpm-lock so we don't desync the lockfile with an npm-managed install.
+  if [ -f "$PROJECT_ROOT/pnpm-lock.yaml" ]; then
+    pnpm add --silent "$TELEGRAM_ADAPTER_VERSION" "$CHAT_SDK_VERSION" 2>&1 | tail -3 || \
+      fail "pnpm add $TELEGRAM_ADAPTER_VERSION $CHAT_SDK_VERSION failed."
+  else
+    npm install --silent "$TELEGRAM_ADAPTER_VERSION" "$CHAT_SDK_VERSION" 2>&1 | tail -1 || \
+      fail "npm install $TELEGRAM_ADAPTER_VERSION $CHAT_SDK_VERSION failed."
+  fi
+  ok "Telegram channel installed ($TELEGRAM_ADAPTER_VERSION + $CHAT_SDK_VERSION)"
 fi
 
 # ── Step 1c: Patch container runtime to use absolute path ────────────────
