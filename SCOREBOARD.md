@@ -53,7 +53,7 @@ This list is not exhaustive. Bugs covered by NDA or those deemed particularly se
 | 21 | top | top Ctrl-K doesn't sanitize for terminal escape characters | https://gitlab.com/procps-ng/procps/-/work_items/429 | Confirmed | |
 | 22 | dnsmasq | Malformed RRSIG Can Crash dnsmasq | https://lists.thekelleys.org.uk/pipermail/dnsmasq-discuss/2026q2/018472.html | Fixed | Independently Discovered CVE-2026-4891 |
 | 23 | dnsmasq | Malformed NSEC/NSEC3 Can Hang dnsmasq | https://lists.thekelleys.org.uk/pipermail/dnsmasq-discuss/2026q2/018473.html | Fixed | Independently Discovered CVE-2026-4890 |
-| 24 | fuchsia | [starnix] prctl(PR_SET_SECUREBITS) ignores SECBIT_*_LOCKED ratchet, letting a privileged process undo a permanent capability lockdown | https://issues.fuchsia.dev/issues/509210191 | Confirmed ||
+| 24 | fuchsia | [starnix] prctl(PR_SET_SECUREBITS) ignores SECBIT_*_LOCKED ratchet, letting a privileged process undo a permanent capability lockdown | https://issues.fuchsia.dev/issues/509210191 | Fixed ||
 | 25 | ncurses | cooked-mode `wgetch()` stack off-by-one | https://lists.gnu.org/archive/html/bug-ncurses/2026-05/msg00004.html | Confirmed ||
 | 26 | ncurses | `infocmp -E` heap overflow in `safe_name()` | https://lists.gnu.org/archive/html/bug-ncurses/2026-05/msg00006.html | Confirmed ||
 
@@ -169,6 +169,6 @@ Status Explanation:
 **Status:** First run of *Fil-de-Soie* agent tested against ncurses. 
 
 ---
-**Last Updated:** Friday, May 8th, 2026
+**Last Updated:** Thursday, May 14th, 2026
 **Maintained By:** Dan Anderson & A.L. Figaro
 **N184 Repository:** https://github.com/MillaFleurs/N184
