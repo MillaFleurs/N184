@@ -186,6 +186,15 @@ NODE_MAJOR=$(echo "$NODE_VERSION" | cut -d. -f1)
 if [ "$NODE_MAJOR" -lt 20 ]; then
   fail "Node.js $NODE_VERSION is too old. Need >= 20."
 fi
+# Upper bound: the pinned better-sqlite3 (11.10.0 in pnpm-lock.yaml) ships
+# prebuilt binaries only through Node 24. On Node 25+ there is no prebuild,
+# so pnpm falls back to compiling from source — which fails because Node 25+
+# removed the V8 APIs better-sqlite3 11.x relies on (Context::GetIsolate,
+# Object::GetPrototype, PropertyCallbackInfo::This). Catch it here with an
+# actionable message instead of a 6-error C++ build log at `pnpm install`.
+if [ "$NODE_MAJOR" -gt 24 ]; then
+  fail "Node.js $NODE_VERSION is too new for the pinned better-sqlite3 (supports Node 20-24). Switch to an LTS release, e.g. 'nvm install 22 && nvm use 22' (or fnm/volta), then re-run init.sh."
+fi
 ok "Node.js $NODE_VERSION"
 
 # Check container runtime is working
@@ -637,7 +646,18 @@ fi
 
 # Verify native module
 if ! node -e "require('better-sqlite3')" 2>/dev/null; then
-  fail "better-sqlite3 native module failed to load. Check build tools."
+  # First-run flake: on a freshly-installed Node, node-gyp must fetch that
+  # runtime's dev headers before it can build better-sqlite3's addon, and
+  # that first fetch can fail/race under pnpm's concurrent script runner —
+  # leaving no loadable binary even though the toolchain is fine. A second
+  # build, with headers now cached, succeeds. Self-heal with one explicit
+  # rebuild before giving up, so a cold machine doesn't hard-fail here.
+  warn "better-sqlite3 did not load after install — rebuilding (one retry)..."
+  pnpm rebuild better-sqlite3 2>&1 | tail -3 || true
+  if ! node -e "require('better-sqlite3')" 2>/dev/null; then
+    fail "better-sqlite3 native module failed to load even after a rebuild. Check build tools (node-gyp, a working C++ toolchain, and a supported Node version)."
+  fi
+  ok "better-sqlite3 recovered after rebuild"
 fi
 ok "Dependencies installed"
 
