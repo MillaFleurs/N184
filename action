@@ -315,6 +315,7 @@ def run_k8s(
         "schedule_type": "once",
         "schedule_value": datetime.now().isoformat(timespec="seconds"),
         "context_mode": "isolated",
+        "scan_id": scan_id,
         "targetAgent": agent,
         "targetJid": "action-cli",
         "createdBy": "action-cli",

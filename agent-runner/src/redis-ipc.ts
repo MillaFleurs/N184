@@ -118,12 +118,23 @@ export class RedisIPC {
   }
 
   /**
-   * Pop a single task from the Vautrin queue (blocking).
+   * Claim a single task from the Vautrin queue (blocking).
+   *
+   * The task is moved to a processing list before execution. A crashed
+   * worker therefore does not lose the task, but it also is not automatically
+   * replayed into a fresh pod after an OOM.
    * Used by vautrin-entrypoint.ts.
    */
-  async popVautrinTask(timeoutSeconds: number = 30): Promise<string | null> {
-    const result = await this.pub.brpop('n184:vautrin-queue', timeoutSeconds);
-    return result ? result[1] : null;
+  async claimVautrinTask(timeoutSeconds: number = 30): Promise<string | null> {
+    return this.pub.brpoplpush(
+      'n184:vautrin-queue',
+      'n184:vautrin-processing',
+      timeoutSeconds,
+    );
+  }
+
+  async ackVautrinTask(taskJson: string): Promise<void> {
+    await this.pub.lrem('n184:vautrin-processing', 1, taskJson);
   }
 
   /**
@@ -135,6 +146,10 @@ export class RedisIPC {
 
   async setSessionId(agent: string, sessionId: string): Promise<void> {
     await this.pub.hset('n184:sessions', agent, sessionId);
+  }
+
+  async getValue(key: string): Promise<string | null> {
+    return this.pub.get(key);
   }
 
   /**

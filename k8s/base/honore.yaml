@@ -48,6 +48,22 @@ spec:
               value: "1"
             - name: CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD
               value: "1"
+            - name: N184_MAX_TURNS
+              value: "40"
+            - name: N184_MAX_BUDGET_USD
+              value: "5"
+            - name: N184_QUERY_TIMEOUT_MS
+              value: "1800000"
+            - name: N184_RECOVERY_MAX_TURNS
+              value: "12"
+            - name: N184_RECOVERY_QUERY_TIMEOUT_MS
+              value: "600000"
+            - name: N184_MAX_DISPATCHES_PER_SCAN
+              value: "20"
+            - name: N184_MAX_DISPATCHES_PER_AGENT
+              value: "10"
+            - name: N184_MAX_VAUTRIN_DISPATCHES_PER_SCAN
+              value: "10"
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:

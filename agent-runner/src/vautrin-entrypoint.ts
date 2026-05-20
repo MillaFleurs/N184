@@ -21,7 +21,7 @@ async function main(): Promise<void> {
   await redisIpc.connect();
 
   log('Waiting for task from n184:vautrin-queue...');
-  const taskJson = await redisIpc.popVautrinTask(QUEUE_TIMEOUT);
+  const taskJson = await redisIpc.claimVautrinTask(QUEUE_TIMEOUT);
 
   if (!taskJson) {
     log('No task received within timeout, exiting');
@@ -52,6 +52,7 @@ async function main(): Promise<void> {
       },
       timeout: 3600_000, // 1 hour max
     });
+    await redisIpc.ackVautrinTask(taskJson);
     log('Vautrin task completed');
   } catch (err) {
     log(`Vautrin task failed: ${err instanceof Error ? err.message : String(err)}`);

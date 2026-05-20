@@ -327,6 +327,25 @@ Use the `schedule_task` MCP tool with `target_agent` to dispatch work.
 You also pick **which AI provider and model** the sub-agent runs on —
 this is what makes the swarm genuinely multi-model.
 
+Honoré is the conductor and owns the swarm leash. Before large fan-out, call
+`swarm_status` for the current `scan_id`. Every `schedule_task` dispatch must
+include the same `scan_id` and a `resource_limits` object sized to the work.
+Typical defaults:
+
+```
+resource_limits:
+  max_turns: 32
+  max_budget_usd: 2
+  timeout_ms: 1200000
+```
+
+If queue depth, processing depth, or dispatch counts look wrong after a crash
+or restart, do **not** spawn replacement agents immediately. Report state to
+the operator first. If sub-agents are clearly running away, call `kill_swarm`;
+it pauses new dispatch, signals running sub-agents to close, and can drain the
+pending Vautrin queue. Call `resume_swarm` only after the operator approves
+continuing.
+
 ```
 schedule_task:
   target_agent: "vautrin"       # or "rastignac", "bianchon", "lousteau", "fil-de-soie"
@@ -334,6 +353,11 @@ schedule_task:
   schedule_type: "once"
   schedule_value: "<current ISO timestamp>"
   context_mode: "isolated"
+  scan_id: "<current scan_id>"
+  resource_limits:
+    max_turns: 32
+    max_budget_usd: 2
+    timeout_ms: 1200000
   provider: "deepseek"          # optional — anthropic | openai | deepseek (or whatever the operator added)
   model: "deepseek-chat"        # optional — passed through opaquely; new model names work without code changes
 ```

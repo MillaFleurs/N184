@@ -109,6 +109,9 @@ class JobManager:
         timeout_seconds: int = 3600,
         provider: str | None = None,
         model: str | None = None,
+        context_mode: str = "group",
+        scan_id: str | None = None,
+        resource_limits: dict[str, Any] | None = None,
     ) -> str:
         """Create a k8s Job for an agent.
 
@@ -126,6 +129,11 @@ class JobManager:
         Returns the Job name.
         """
         resolved: Resolved = get_registry().resolve(provider, model)
+        if resource_limits and resource_limits.get("timeout_ms"):
+            timeout_seconds = max(1, int(resource_limits["timeout_ms"]) // 1000)
+        max_turns_env = str((resource_limits or {}).get("max_turns", 32))
+        timeout_ms_env = str((resource_limits or {}).get("timeout_ms", 1_800_000))
+        max_budget_env = (resource_limits or {}).get("max_budget_usd")
 
         timestamp = int(time.time())
         job_name = f"{agent_name}-{timestamp}"
@@ -140,8 +148,11 @@ class JobManager:
             "isMain": False,
             "isScheduledTask": True,
             "assistantName": agent_name.capitalize(),
+            "contextMode": context_mode,
             "provider": resolved.provider.name,
             "model": resolved.model,
+            "scan_id": scan_id,
+            "resourceLimits": resource_limits,
         }
         await self.redis_bridge.set_job_input(job_name, container_input)
 
@@ -200,6 +211,24 @@ class JobManager:
                                     client.V1EnvVar(
                                         name="CHROMADB_PORT",
                                         value="8000",
+                                    ),
+                                    client.V1EnvVar(
+                                        name="N184_MAX_TURNS",
+                                        value=max_turns_env,
+                                    ),
+                                    client.V1EnvVar(
+                                        name="N184_QUERY_TIMEOUT_MS",
+                                        value=timeout_ms_env,
+                                    ),
+                                    *(
+                                        [
+                                            client.V1EnvVar(
+                                                name="N184_MAX_BUDGET_USD",
+                                                value=str(max_budget_env),
+                                            )
+                                        ]
+                                        if max_budget_env
+                                        else []
                                     ),
                                     # Provider routing (no secrets — only routing info)
                                     *[

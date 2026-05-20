@@ -31,6 +31,19 @@ interface ContainerInput {
   isMain: boolean;
   isScheduledTask?: boolean;
   assistantName?: string;
+  contextMode?: 'group' | 'isolated' | 'recovery';
+}
+
+function recoveryPrompt(text: string): string {
+  return `[RESTART RECOVERY MODE]
+
+Honoré restarted with a persisted session present. Do not dispatch new agents yet.
+First inspect current swarm state, queued work, processing work, and recent scan
+artifacts. Report what is running or stranded, what would be needed to continue,
+and ask the operator before spawning or resuming any sub-agent work.
+
+Operator message:
+${text}`;
 }
 
 async function main(): Promise<void> {
@@ -45,6 +58,8 @@ async function main(): Promise<void> {
   if (sessionId) {
     log(`Restored session: ${sessionId}`);
   }
+  let recoveryPending =
+    Boolean(sessionId) && process.env.N184_HONORE_RECOVERY_ON_RESTART !== '0';
 
   // Wait for first message, then pipe as ContainerInput to main runner
   for await (const msg of redisIpc.subscribe()) {
@@ -55,14 +70,21 @@ async function main(): Promise<void> {
 
     log(`Received message (${msg.length} chars), starting agent query`);
 
+    const contextMode = recoveryPending ? 'recovery' : 'group';
+    const activeSessionId = recoveryPending
+      ? undefined
+      : (await redisIpc.getSessionId(AGENT_NAME)) || undefined;
+
     const containerInput: ContainerInput = {
-      prompt: msg,
-      sessionId: (await redisIpc.getSessionId(AGENT_NAME)) || undefined,
+      prompt: recoveryPending ? recoveryPrompt(msg) : msg,
+      sessionId: activeSessionId,
       groupFolder: GROUP_FOLDER,
       chatJid: CHAT_JID,
       isMain: true,
       assistantName: ASSISTANT_NAME,
+      contextMode,
     };
+    recoveryPending = false;
 
     const inputPath = '/tmp/honore-input.json';
     fs.writeFileSync(inputPath, JSON.stringify(containerInput));

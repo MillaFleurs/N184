@@ -40,8 +40,7 @@ const MODEL = process.env.N184_MODEL || '';
 const BASE_URL = process.env.N184_PROVIDER_BASE_URL || '';
 const API_KEY_ENV = process.env.N184_PROVIDER_API_KEY_ENV || '';
 
-// Cap iterations so a misbehaving model can't loop forever.
-const MAX_TURNS = 32;
+const SWARM_KILL_KEY = 'n184:swarm:kill';
 
 interface ContainerInput {
   prompt: string;
@@ -53,6 +52,19 @@ interface ContainerInput {
   provider?: string;
   model?: string;
   script?: string;
+  contextMode?: string;
+  context_mode?: string;
+  resourceLimits?: ResourceLimits;
+  resource_limits?: ResourceLimits;
+}
+
+interface ResourceLimits {
+  maxTurns?: number;
+  max_turns?: number;
+  maxBudgetUsd?: number;
+  max_budget_usd?: number;
+  timeoutMs?: number;
+  timeout_ms?: number;
 }
 
 function log(message: string): void {
@@ -96,6 +108,22 @@ function resolveApiKey(): string {
   return v || '';
 }
 
+function parsePositiveInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function getMaxTurns(input: ContainerInput): number {
+  const raw = input.resourceLimits || input.resource_limits || {};
+  return raw.maxTurns || raw.max_turns || parsePositiveInt('N184_MAX_TURNS', 32);
+}
+
+async function isSwarmKilled(redis: RedisIPC): Promise<string | null> {
+  return redis.getValue(SWARM_KILL_KEY);
+}
+
 // ── Tool definitions visible to the model ────────────────────────────
 //
 // Mirrors the MCP server tools (send_message, schedule_task). We keep the
@@ -133,6 +161,14 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           prompt: { type: 'string' },
           provider: { type: 'string' },
           model: { type: 'string' },
+          resource_limits: {
+            type: 'object',
+            properties: {
+              max_turns: { type: 'integer' },
+              max_budget_usd: { type: 'number' },
+              timeout_ms: { type: 'integer' },
+            },
+          },
         },
         required: ['target_agent', 'prompt'],
       },
@@ -168,6 +204,8 @@ async function handleToolCall(
   }
 
   if (fnName === 'schedule_task') {
+    const killed = await isSwarmKilled(redis);
+    if (killed) return `error: swarm kill switch is active: ${killed}`;
     await redis.pushTask({
       type: 'schedule_task',
       taskId: `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -179,6 +217,10 @@ async function handleToolCall(
       targetAgent: String(args.target_agent ?? ''),
       provider: typeof args.provider === 'string' ? args.provider : undefined,
       model: typeof args.model === 'string' ? args.model : undefined,
+      resource_limits:
+        typeof args.resource_limits === 'object' && args.resource_limits !== null
+          ? args.resource_limits
+          : undefined,
       createdBy: containerInput.groupFolder,
       agentName: AGENT_NAME,
       timestamp: new Date().toISOString(),
@@ -220,8 +262,14 @@ async function main(): Promise<void> {
     },
   ];
 
-  for (let turn = 0; turn < MAX_TURNS; turn++) {
-    log(`Turn ${turn + 1}/${MAX_TURNS}`);
+  const maxTurns = getMaxTurns(containerInput);
+  for (let turn = 0; turn < maxTurns; turn++) {
+    const killed = await isSwarmKilled(redis);
+    if (killed) {
+      log(`Stopping because swarm kill switch is active: ${killed}`);
+      break;
+    }
+    log(`Turn ${turn + 1}/${maxTurns}`);
     const response = await client.chat.completions.create({
       model: MODEL,
       messages,

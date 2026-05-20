@@ -41,11 +41,26 @@ interface ContainerInput {
   isMain: boolean;
   isScheduledTask?: boolean;
   assistantName?: string;
+  contextMode?: ContextMode;
+  context_mode?: ContextMode;
   script?: string;
   // Provider routing (set by JobManager from the registry).
   // For the claude-sdk runtime we read `model`; the rest is for diagnostics.
   provider?: string;
   model?: string;
+  resourceLimits?: ResourceLimits;
+  resource_limits?: ResourceLimits;
+}
+
+type ContextMode = 'group' | 'isolated' | 'recovery';
+
+interface ResourceLimits {
+  maxTurns?: number;
+  max_turns?: number;
+  maxBudgetUsd?: number;
+  max_budget_usd?: number;
+  timeoutMs?: number;
+  timeout_ms?: number;
 }
 
 interface ContainerOutput {
@@ -205,6 +220,126 @@ function writeOutput(output: ContainerOutput): void {
 
 function log(message: string): void {
   console.error(`[agent-runner] ${message}`);
+}
+
+function parsePositiveInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parsePositiveFloat(name: string): number | undefined {
+  const raw = process.env[name];
+  if (!raw) return undefined;
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function getContextMode(input: ContainerInput): ContextMode {
+  return input.contextMode || input.context_mode || 'group';
+}
+
+function getResourceLimits(input: ContainerInput, contextMode: ContextMode): {
+  maxTurns: number;
+  maxBudgetUsd?: number;
+  timeoutMs: number;
+} {
+  const raw = input.resourceLimits || input.resource_limits || {};
+  const defaultTurns = contextMode === 'recovery'
+    ? parsePositiveInt('N184_RECOVERY_MAX_TURNS', 12)
+    : parsePositiveInt('N184_MAX_TURNS', 40);
+  const defaultTimeout = contextMode === 'recovery'
+    ? parsePositiveInt('N184_RECOVERY_QUERY_TIMEOUT_MS', 600_000)
+    : parsePositiveInt('N184_QUERY_TIMEOUT_MS', 1_800_000);
+
+  return {
+    maxTurns: raw.maxTurns || raw.max_turns || defaultTurns,
+    maxBudgetUsd:
+      raw.maxBudgetUsd ||
+      raw.max_budget_usd ||
+      parsePositiveFloat('N184_MAX_BUDGET_USD'),
+    timeoutMs: raw.timeoutMs || raw.timeout_ms || defaultTimeout,
+  };
+}
+
+function getAllowedTools(contextMode: ContextMode, mcpServerName: string): string[] {
+  const common = [
+    'Bash',
+    'Read',
+    'Glob',
+    'Grep',
+    'SendMessage',
+    'TodoWrite',
+    `mcp__${mcpServerName}__*`,
+  ];
+
+  if (contextMode === 'recovery') {
+    return common;
+  }
+
+  return [
+    ...common,
+    'Write',
+    'Edit',
+    'WebSearch',
+    'WebFetch',
+    'Task',
+    'TaskOutput',
+    'TaskStop',
+    'TeamCreate',
+    'TeamDelete',
+    'ToolSearch',
+    'Skill',
+    'NotebookEdit',
+  ];
+}
+
+function createPreToolUseGuard(contextMode: ContextMode): HookCallback {
+  return async (input) => {
+    const event = input as {
+      hook_event_name?: string;
+      tool_name?: string;
+      tool_input?: unknown;
+    };
+    if (event.hook_event_name !== 'PreToolUse') return {};
+
+    if (contextMode === 'recovery' && event.tool_name?.startsWith('mcp__')) {
+      const tool = event.tool_name.toLowerCase();
+      if (tool.includes('schedule_task') || tool.includes('register_provider')) {
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'deny',
+            permissionDecisionReason:
+              'Honoré is in restart recovery mode. Inspect state and ask the operator before dispatching new agents.',
+          },
+        };
+      }
+    }
+
+    if (event.tool_name === 'Bash') {
+      const command = String((event.tool_input as { command?: unknown })?.command ?? '');
+      const maxCommandChars = parsePositiveInt('N184_MAX_BASH_COMMAND_CHARS', 4000);
+      const runawayPatterns = [
+        /find\s+\S+\s+.*-exec\s+cat\b/s,
+        /cat\s+\$\(find\b/s,
+        /grep\s+-R\s+["']?\./s,
+      ];
+      if (command.length > maxCommandChars || runawayPatterns.some((p) => p.test(command))) {
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'deny',
+            permissionDecisionReason:
+              'Command blocked by N184 runtime guardrail because it can dump too much repository context.',
+          },
+        };
+      }
+    }
+
+    return {};
+  };
 }
 
 // ── Transcript Archiving ─────────────────────────────────────────────
@@ -458,6 +593,13 @@ async function runQuery(
 
   // MCP server name: n184 for k8s, nanoclaw for file-based compat
   const mcpServerName = IPC_BACKEND === 'redis' ? 'n184' : 'nanoclaw';
+  const contextMode = getContextMode(containerInput);
+  const resourceLimits = getResourceLimits(containerInput, contextMode);
+  const abortController = new AbortController();
+  const timeoutHandle = setTimeout(() => {
+    log(`Aborting query after ${resourceLimits.timeoutMs}ms timeout`);
+    abortController.abort();
+  }, resourceLimits.timeoutMs);
 
   // Honoré dispatched this Job with an explicit provider+model. We only
   // honor the model here; provider routing for non-Anthropic backends
@@ -469,102 +611,105 @@ async function runQuery(
     || process.env.N184_MODEL
     || undefined;
 
-  for await (const message of query({
-    prompt: stream,
-    options: {
-      cwd: '/workspace/group',
-      model: dispatchedModel,
-      additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
-      resume: sessionId,
-      resumeSessionAt: resumeAt,
-      systemPrompt: globalClaudeMd
-        ? {
-            type: 'preset' as const,
-            preset: 'claude_code' as const,
-            append: globalClaudeMd,
-          }
-        : undefined,
-      allowedTools: [
-        'Bash',
-        'Read',
-        'Write',
-        'Edit',
-        'Glob',
-        'Grep',
-        'WebSearch',
-        'WebFetch',
-        'Task',
-        'TaskOutput',
-        'TaskStop',
-        'TeamCreate',
-        'TeamDelete',
-        'SendMessage',
-        'TodoWrite',
-        'ToolSearch',
-        'Skill',
-        'NotebookEdit',
-        `mcp__${mcpServerName}__*`,
-      ],
-      env: sdkEnv,
-      permissionMode: 'bypassPermissions',
-      allowDangerouslySkipPermissions: true,
-      settingSources: ['project', 'user'],
-      mcpServers: {
-        [mcpServerName]: {
-          command: 'node',
-          args: [mcpServerPath],
-          env: {
-            NANOCLAW_CHAT_JID: containerInput.chatJid,
-            NANOCLAW_GROUP_FOLDER: containerInput.groupFolder,
-            NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
-            IPC_BACKEND,
-            REDIS_URL,
-            N184_AGENT_NAME: AGENT_NAME,
+  try {
+    for await (const message of query({
+      prompt: stream,
+      options: {
+        cwd: '/workspace/group',
+        model: dispatchedModel,
+        additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
+        abortController,
+        maxTurns: resourceLimits.maxTurns,
+        maxBudgetUsd: resourceLimits.maxBudgetUsd,
+        persistSession: contextMode === 'group',
+        resume: contextMode === 'group' ? sessionId : undefined,
+        resumeSessionAt: contextMode === 'group' ? resumeAt : undefined,
+        systemPrompt: globalClaudeMd
+          ? {
+              type: 'preset' as const,
+              preset: 'claude_code' as const,
+              append: globalClaudeMd,
+            }
+          : undefined,
+        allowedTools: getAllowedTools(contextMode, mcpServerName),
+        env: sdkEnv,
+        permissionMode: 'bypassPermissions',
+        allowDangerouslySkipPermissions: true,
+        settingSources: ['project', 'user'],
+        mcpServers: {
+          [mcpServerName]: {
+            command: 'node',
+            args: [mcpServerPath],
+            env: {
+              NANOCLAW_CHAT_JID: containerInput.chatJid,
+              NANOCLAW_GROUP_FOLDER: containerInput.groupFolder,
+              NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
+              IPC_BACKEND,
+              REDIS_URL,
+              N184_AGENT_NAME: AGENT_NAME,
+              N184_CONTEXT_MODE: contextMode,
+              N184_MAX_TURNS: String(resourceLimits.maxTurns),
+              N184_MAX_BUDGET_USD: resourceLimits.maxBudgetUsd
+                ? String(resourceLimits.maxBudgetUsd)
+                : '',
+              N184_QUERY_TIMEOUT_MS: String(resourceLimits.timeoutMs),
+              N184_MAX_DISPATCHES_PER_SCAN: process.env.N184_MAX_DISPATCHES_PER_SCAN || '',
+              N184_MAX_DISPATCHES_PER_AGENT: process.env.N184_MAX_DISPATCHES_PER_AGENT || '',
+              N184_MAX_VAUTRIN_DISPATCHES_PER_SCAN:
+                process.env.N184_MAX_VAUTRIN_DISPATCHES_PER_SCAN || '',
+              N184_RECOVERY_ALLOW_DISPATCH: process.env.N184_RECOVERY_ALLOW_DISPATCH || '',
+            },
           },
         },
+        hooks: {
+          PreToolUse: [
+            { hooks: [createPreToolUseGuard(contextMode)] },
+          ],
+          PreCompact: [
+            { hooks: [createPreCompactHook(containerInput.assistantName)] },
+          ],
+        },
       },
-      hooks: {
-        PreCompact: [
-          { hooks: [createPreCompactHook(containerInput.assistantName)] },
-        ],
-      },
-    },
-  })) {
-    messageCount++;
-    const msgType =
-      message.type === 'system'
-        ? `system/${(message as { subtype?: string }).subtype}`
-        : message.type;
-    log(`[msg #${messageCount}] type=${msgType}`);
+    })) {
+      messageCount++;
+      const msgType =
+        message.type === 'system'
+          ? `system/${(message as { subtype?: string }).subtype}`
+          : message.type;
+      log(`[msg #${messageCount}] type=${msgType}`);
 
-    if (message.type === 'assistant' && 'uuid' in message) {
-      lastAssistantUuid = (message as { uuid: string }).uuid;
-    }
+      if (message.type === 'assistant' && 'uuid' in message) {
+        lastAssistantUuid = (message as { uuid: string }).uuid;
+      }
 
-    if (message.type === 'system' && message.subtype === 'init') {
-      newSessionId = message.session_id;
-      log(`Session initialized: ${newSessionId}`);
-    }
+      if (message.type === 'system' && message.subtype === 'init') {
+        newSessionId = message.session_id;
+        log(`Session initialized: ${newSessionId}`);
+      }
 
-    if (message.type === 'result') {
-      resultCount++;
-      const textResult =
-        'result' in message ? (message as { result?: string }).result : null;
-      log(
-        `Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`,
-      );
-      writeOutput({
-        status: 'success',
-        result: textResult || null,
-        newSessionId,
-      });
+      if (message.type === 'result') {
+        resultCount++;
+        const textResult =
+          'result' in message ? (message as { result?: string }).result : null;
+        log(
+          `Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`,
+        );
+        writeOutput({
+          status: message.subtype === 'success' ? 'success' : 'error',
+          result: textResult || null,
+          newSessionId,
+          error: message.subtype === 'success' ? undefined : message.subtype,
+        });
+      }
     }
+  } finally {
+    clearTimeout(timeoutHandle);
   }
 
   ipcPolling = false;
 
   // Persist session to Redis if available
-  if (newSessionId && redisIpc) {
+  if (newSessionId && redisIpc && contextMode === 'group') {
     await redisIpc.setSessionId(AGENT_NAME, newSessionId);
   }
 
@@ -609,10 +754,14 @@ async function main(): Promise<void> {
   const sdkEnv: Record<string, string | undefined> = { ...process.env };
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const mcpServerPath = path.join(__dirname, 'ipc-mcp-stdio.js');
+  const contextMode = getContextMode(containerInput);
 
   // Restore session from Redis if available
   let sessionId = containerInput.sessionId;
-  if (!sessionId && redisIpc) {
+  if (contextMode !== 'group') {
+    sessionId = undefined;
+    log(`Context mode ${contextMode}: starting without persisted session`);
+  } else if (!sessionId && redisIpc) {
     sessionId = (await redisIpc.getSessionId(AGENT_NAME)) || undefined;
     if (sessionId) {
       log(`Restored session from Redis: ${sessionId}`);

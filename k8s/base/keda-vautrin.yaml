@@ -30,6 +30,10 @@ spec:
                 value: "chromadb.n184.svc.cluster.local"
               - name: CHROMADB_PORT
                 value: "8000"
+              - name: N184_MAX_TURNS
+                value: "32"
+              - name: N184_QUERY_TIMEOUT_MS
+                value: "1200000"
               - name: ANTHROPIC_API_KEY
                 valueFrom:
                   secretKeyRef:

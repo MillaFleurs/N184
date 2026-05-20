@@ -123,6 +123,9 @@ class RedisBridge:
         schedule_type = data.get("schedule_type", "once")
         provider = data.get("provider")
         model = data.get("model")
+        context_mode = data.get("context_mode", "group")
+        scan_id = data.get("scan_id")
+        resource_limits = data.get("resource_limits")
 
         if not self.job_manager:
             logger.warning("No job_manager — cannot create agent Job")
@@ -140,8 +143,11 @@ class RedisBridge:
                 "isMain": False,
                 "isScheduledTask": True,
                 "assistantName": "Vautrin",
+                "contextMode": context_mode,
                 "provider": provider,
                 "model": model,
+                "scan_id": scan_id,
+                "resourceLimits": resource_limits,
             }
             if self._client:
                 await self._client.lpush(
@@ -154,13 +160,20 @@ class RedisBridge:
             )
         elif target_agent in ("rastignac", "bianchon", "lousteau", "fil-de-soie"):
             # Create on-demand k8s Job
-            session_id = await self.get_session_id(target_agent)
+            session_id = (
+                await self.get_session_id(target_agent)
+                if context_mode == "group"
+                else None
+            )
             job_name = await self.job_manager.create_agent_job(
                 agent_name=target_agent,
                 prompt=prompt,
                 session_id=session_id,
                 provider=provider,
                 model=model,
+                context_mode=context_mode,
+                scan_id=scan_id,
+                resource_limits=resource_limits,
             )
             logger.info(
                 "Created %s Job: %s (provider=%s model=%s)",
