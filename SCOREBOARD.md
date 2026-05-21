@@ -6,11 +6,11 @@ Track record of verified security vulnerabilities and bugs discovered using N184
 
 ## Summary Statistics
 
-**Total Projects Analyzed:** 12
+**Total Projects Analyzed:** 13
 
-**Total Bugs Found:** 26
+**Total Bugs Found:** 27
 
-**Total Bugs Fixed:** 18
+**Total Bugs Fixed:** 23
 
 
 **Note on Ethical Disclosure:** 
@@ -43,19 +43,21 @@ This list is not exhaustive. Bugs covered by NDA or those deemed particularly se
 | 11 | docker cli | Path confinement for secrets.file and configs.file in stack deploy  | https://github.com/docker/cli/issues/6919 | Confirmed by Docker Security ||
 | 12 | MLX | Prevent out-of-bounds memory access caused by corrupt tensor.ndim in gguf file | https://github.com/ml-explore/mlx/pull/3359 | Confirmed | |
 | 13 | MLX | SafeTensors data_offsets Not Validated | https://github.com/ml-explore/mlx/issues/3363 | Confirmed ||
-| 14 | Clickhouse | Interserver Mode Entered Before Secret Hash Verified | https://github.com/ClickHouse/ClickHouse/issues/99512 | Confirmed ||
+| 14 | Clickhouse | Interserver Mode Entered Before Secret Hash Verified | https://github.com/ClickHouse/ClickHouse/issues/99512 | Fixed ||
 | 15 | OpenBSD | rpki-client: fix pointer used in as_check_overlap() | https://github.com/openbsd/src/commit/566debf87d661c2ed816de66da56b8d23eb76465 | Fixed ||
 | 16 | OpenBSD | At the end of parsing the http response header do some sanity checks | https://github.com/openbsd/src/commit/f97bb3898e4d5eef036c382a0c37dcd75c914318 | Fixed ||
 | 17 | Systemd | Improve error logging for fstat failure | https://github.com/systemd/systemd/pull/41886#event-25020576441 | Fixed ||
 | 18 | less | Memory Safety Issue in decode.c function expand_special_keys on malformed lesskey file #763 | |https://github.com/gwsw/less/issues/763#issuecomment-4357928622 | Fixed ||
-| 19 | llm-d | P/D sidecar allowlist stores only pod IP, not host:port | https://github.com/llm-d/llm-d-inference-scheduler/issues/979 | Confirmed ||
-| 20 | llm-d | EPP panics in default response parser on wrong-typed usage / token-count fields | https://github.com/llm-d/llm-d-inference-scheduler/issues/981 | Confirmed | |
-| 21 | top | top Ctrl-K doesn't sanitize for terminal escape characters | https://gitlab.com/procps-ng/procps/-/work_items/429 | Confirmed | |
+| 19 | llm-d | P/D sidecar allowlist stores only pod IP, not host:port | https://github.com/llm-d/llm-d-inference-scheduler/issues/979 | Fixed ||
+| 20 | llm-d | EPP panics in default response parser on wrong-typed usage / token-count fields | https://github.com/llm-d/llm-d-inference-scheduler/issues/981 | Fixed | |
+| 21 | top | top Ctrl-K doesn't sanitize for terminal escape characters | https://gitlab.com/procps-ng/procps/-/work_items/429 | Fixed | |
 | 22 | dnsmasq | Malformed RRSIG Can Crash dnsmasq | https://lists.thekelleys.org.uk/pipermail/dnsmasq-discuss/2026q2/018472.html | Fixed | Independently Discovered CVE-2026-4891 |
 | 23 | dnsmasq | Malformed NSEC/NSEC3 Can Hang dnsmasq | https://lists.thekelleys.org.uk/pipermail/dnsmasq-discuss/2026q2/018473.html | Fixed | Independently Discovered CVE-2026-4890 |
 | 24 | fuchsia | [starnix] prctl(PR_SET_SECUREBITS) ignores SECBIT_*_LOCKED ratchet, letting a privileged process undo a permanent capability lockdown | https://issues.fuchsia.dev/issues/509210191 | Fixed ||
-| 25 | ncurses | cooked-mode `wgetch()` stack off-by-one | https://lists.gnu.org/archive/html/bug-ncurses/2026-05/msg00004.html | Confirmed ||
-| 26 | ncurses | `infocmp -E` heap overflow in `safe_name()` | https://lists.gnu.org/archive/html/bug-ncurses/2026-05/msg00006.html | Confirmed ||
+| 25 | ncurses | cooked-mode `wgetch()` stack off-by-one | https://lists.gnu.org/archive/html/bug-ncurses/2026-05/msg00004.html | Fixed ||
+| 26 | ncurses | `infocmp -E` heap overflow in `safe_name()` | https://lists.gnu.org/archive/html/bug-ncurses/2026-05/msg00006.html | Fixed ||
+| 27 | which | OOB stack read in `--read-functions` parser on empty/NUL line | https://lists.gnu.org/archive/html/which-bugs/2026-05/msg00000.html | Fixed ||
+
 
 Status Explanation:
 
