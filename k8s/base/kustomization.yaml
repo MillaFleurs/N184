@@ -9,7 +9,10 @@ resources:
   - redis.yaml
   - chromadb.yaml
   - memory-palace-pv.yaml
-  - api-secrets.yaml
+  # api-secrets.yaml is intentionally NOT applied here. setup.sh creates the
+  # n184-api-keys Secret imperatively from .env; applying the empty template
+  # via kustomize would wipe the real keys (incl. CLAUDE_CODE_OAUTH_TOKEN) on
+  # every `kubectl apply -k`. The template file is kept for documentation.
   - providers-configmap.yaml
   - controller.yaml
   - honore.yaml

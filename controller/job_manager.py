@@ -50,8 +50,14 @@ def _api_key_envs() -> list[client.V1EnvVar]:
         env_name = registry.get(name).api_key_env
         if env_name:
             key_names.add(env_name)
-    # ANTHROPIC_API_KEY is always required because Honoré itself runs on Claude.
+    # Claude agents (Honoré + claude-sdk sub-agents) authenticate with EITHER a
+    # subscription OAuth token OR an API key. Mount both and let the SDK pick
+    # whichever is present. Every ref is optional: a required ref to a key the
+    # operator didn't set would block the pod from ever starting (and an empty
+    # ANTHROPIC_API_KEY would shadow the OAuth token — see the secret builder,
+    # which omits empty Claude-auth keys so absent==unset here).
     key_names.add("ANTHROPIC_API_KEY")
+    key_names.add("CLAUDE_CODE_OAUTH_TOKEN")
 
     envs: list[client.V1EnvVar] = []
     for key in sorted(key_names):
@@ -62,7 +68,7 @@ def _api_key_envs() -> list[client.V1EnvVar]:
                     secret_key_ref=client.V1SecretKeySelector(
                         name=SECRET_NAME,
                         key=key,
-                        optional=key != "ANTHROPIC_API_KEY",
+                        optional=True,
                     )
                 ),
             )

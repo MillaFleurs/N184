@@ -76,11 +76,22 @@ spec:
               value: "10"
             - name: N184_MAX_VAUTRIN_DISPATCHES_PER_SCAN
               value: "10"
+            # Claude auth: either a subscription OAuth token or an API key.
+            # Both optional + the secret omits empty ones, so exactly the one
+            # the operator configured is injected (an empty ANTHROPIC_API_KEY
+            # would otherwise shadow the OAuth token).
+            - name: CLAUDE_CODE_OAUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: n184-api-keys
+                  key: CLAUDE_CODE_OAUTH_TOKEN
+                  optional: true
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: n184-api-keys
                   key: ANTHROPIC_API_KEY
+                  optional: true
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:

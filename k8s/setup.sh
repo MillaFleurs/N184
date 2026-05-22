@@ -36,7 +36,10 @@ fail()  { echo -e "${RED}✗${NC} $*"; exit 1; }
 
 OS=$(uname -s)
 OVERLAY="production"
-CONTAINER_RUNTIME="docker"
+# Honor CONTAINER_RUNTIME from the environment/.env (sourced below); default to
+# docker. The k3d cluster itself still needs Docker on macOS — this only picks
+# the runtime used for image builds.
+CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-docker}"
 
 echo ""
 echo -e "${BOLD}N184 Kubernetes Setup${NC}"
@@ -186,16 +189,26 @@ if [ -f "$N184_ROOT/.env" ]; then
   set +a
 fi
 
-# Prompt for required keys
-if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-  read -sp "  Anthropic API Key: " ANTHROPIC_API_KEY
-  echo
+# Claude auth: either a subscription OAuth token (CLAUDE_CODE_OAUTH_TOKEN) or an
+# API key (ANTHROPIC_API_KEY) — at least one is required. Both come from .env
+# (sourced above). Only prompt when interactive; never hang on EOF under
+# nohup/CI (the headless-run failure that bit us before).
+CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-}"
+ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+  if [ -t 0 ]; then
+    read -sp "  Anthropic API Key (or set CLAUDE_CODE_OAUTH_TOKEN in .env): " ANTHROPIC_API_KEY
+    echo
+  else
+    fail "No Claude auth found — set CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY in .env (no TTY to prompt)."
+  fi
 fi
 
-if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
+if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] && [ -t 0 ]; then
   read -sp "  Telegram Bot Token: " TELEGRAM_BOT_TOKEN
   echo
 fi
+TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
 
 # Optional multi-model keys (read from .env or leave empty)
 OPENAI_API_KEY="${OPENAI_API_KEY:-}"
@@ -213,6 +226,13 @@ EMAIL_SMTP_HOST="${EMAIL_SMTP_HOST:-}"
 # Show which providers are configured
 echo ""
 info "Model providers:"
+if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+  ok "  Claude (subscription OAuth token)"
+elif [ -n "$ANTHROPIC_API_KEY" ]; then
+  ok "  Claude (API key)"
+else
+  warn "  Claude (NO AUTH — Honoré will fail to authenticate)"
+fi
 [ -n "$OPENAI_API_KEY" ] && ok "  OpenAI" || warn "  OpenAI (not set)"
 [ -n "$DEEPSEEK_API_KEY" ] && ok "  DeepSeek" || warn "  DeepSeek (not set)"
 [ -n "$GEMINI_API_KEY" ] && ok "  Gemini" || warn "  Gemini (not set)"
@@ -227,19 +247,26 @@ echo ""
 # When implemented, read OLLAMA_BASE_URL / LLAMA_CPP_BASE_URL / MLX_BASE_URL
 # from .env and pass as config to agent pods.
 
-kubectl create secret generic n184-api-keys \
-  --namespace n184 \
-  --from-literal=ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}" \
-  --from-literal=TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN}" \
-  --from-literal=OPENAI_API_KEY="${OPENAI_API_KEY}" \
-  --from-literal=DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY}" \
-  --from-literal=GEMINI_API_KEY="${GEMINI_API_KEY}" \
-  --from-literal=SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN}" \
-  --from-literal=SLACK_APP_TOKEN="${SLACK_APP_TOKEN}" \
-  --from-literal=EMAIL_IMAP_HOST="${EMAIL_IMAP_HOST}" \
-  --from-literal=EMAIL_IMAP_USER="${EMAIL_IMAP_USER}" \
-  --from-literal=EMAIL_IMAP_PASS="${EMAIL_IMAP_PASS}" \
-  --from-literal=EMAIL_SMTP_HOST="${EMAIL_SMTP_HOST}" \
+# The two Claude-auth keys are added only when non-empty: k8s injects empty
+# strings as real env vars, and the SDK would prefer an empty ANTHROPIC_API_KEY
+# over the OAuth token. The manifests mark both refs optional, so an omitted
+# key simply means the env var is unset in the pod.
+SECRET_ARGS=(--namespace n184)
+[ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && SECRET_ARGS+=(--from-literal=CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN")
+[ -n "$ANTHROPIC_API_KEY" ] && SECRET_ARGS+=(--from-literal=ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY")
+SECRET_ARGS+=(
+  --from-literal=TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN}"
+  --from-literal=OPENAI_API_KEY="${OPENAI_API_KEY}"
+  --from-literal=DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY}"
+  --from-literal=GEMINI_API_KEY="${GEMINI_API_KEY}"
+  --from-literal=SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN}"
+  --from-literal=SLACK_APP_TOKEN="${SLACK_APP_TOKEN}"
+  --from-literal=EMAIL_IMAP_HOST="${EMAIL_IMAP_HOST}"
+  --from-literal=EMAIL_IMAP_USER="${EMAIL_IMAP_USER}"
+  --from-literal=EMAIL_IMAP_PASS="${EMAIL_IMAP_PASS}"
+  --from-literal=EMAIL_SMTP_HOST="${EMAIL_SMTP_HOST}"
+)
+kubectl create secret generic n184-api-keys "${SECRET_ARGS[@]}" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 ok "Secrets configured"
 
