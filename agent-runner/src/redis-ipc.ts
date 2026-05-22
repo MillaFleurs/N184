@@ -152,6 +152,44 @@ export class RedisIPC {
     return this.pub.get(key);
   }
 
+  // ── KVStore surface (see budget-guard.ts) ──────────────────────────
+  // Backs the loop-safe budget cap + restart breaker. State lives in Redis
+  // so it outlives a crash-restart of the agent pod.
+
+  async get(key: string): Promise<string | null> {
+    return this.pub.get(key);
+  }
+
+  async set(key: string, value: string): Promise<void> {
+    await this.pub.set(key, value);
+  }
+
+  async del(key: string): Promise<void> {
+    await this.pub.del(key);
+  }
+
+  async incr(key: string): Promise<number> {
+    return this.pub.incr(key);
+  }
+
+  async incrByFloat(key: string, delta: number): Promise<number> {
+    const result = await this.pub.incrbyfloat(key, delta);
+    return Number.parseFloat(result);
+  }
+
+  /**
+   * Set a TTL only if the key currently has none, so a rolling counter's
+   * window is fixed at first write rather than extended on every bump.
+   * Implemented via TTL+EXPIRE (two commands) for portability across Redis
+   * versions rather than EXPIRE ... NX (Redis 7+ only).
+   */
+  async expireIfNew(key: string, seconds: number): Promise<void> {
+    const ttl = await this.pub.ttl(key); // -2 = no key, -1 = no expiry, >=0 = has expiry
+    if (ttl === -1) {
+      await this.pub.expire(key, seconds);
+    }
+  }
+
   /**
    * Read the current tasks list (for list_tasks MCP tool).
    */

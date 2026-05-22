@@ -50,8 +50,20 @@ spec:
               value: "1"
             - name: N184_MAX_TURNS
               value: "40"
+            # Per-query ceiling the SDK enforces (resets every restart). Under
+            # OAuth auth this is computed from list prices and is approximate.
             - name: N184_MAX_BUDGET_USD
               value: "5"
+            # Loop-safe cumulative cap + restart breaker, persisted in Redis so
+            # they survive pod restarts (see agent-runner/src/budget-guard.ts).
+            # TOKENS are the real capacity unit under a Claude subscription —
+            # TUNE this to your plan's daily token budget.
+            - name: N184_DAILY_TOKEN_CAP
+              value: "20000000"
+            - name: N184_MAX_RESTARTS
+              value: "5"
+            - name: N184_RESTART_WINDOW_SEC
+              value: "600"
             - name: N184_QUERY_TIMEOUT_MS
               value: "1800000"
             - name: N184_RECOVERY_MAX_TURNS

@@ -10,6 +10,15 @@
  */
 
 import { RedisIPC } from './redis-ipc.js';
+import {
+  checkBudget,
+  isTripped,
+  recordRestart,
+  resetBreaker,
+  loadBreakerConfig,
+  loadBudgetConfig,
+  resetToken,
+} from './budget-guard.js';
 import { execFile } from 'child_process';
 import fs from 'fs';
 
@@ -61,11 +70,69 @@ async function main(): Promise<void> {
   let recoveryPending =
     Boolean(sessionId) && process.env.N184_HONORE_RECOVERY_ON_RESTART !== '0';
 
+  const notify = async (text: string): Promise<void> => {
+    try {
+      await redisIpc.sendMessage({ chatJid: CHAT_JID, text, sender: ASSISTANT_NAME });
+    } catch (e) {
+      log(`notify failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  // Restart circuit-breaker + loop-safe budget gate. State lives in Redis so it
+  // survives the pod restart an OOM/crash triggers; without this a crash loop
+  // re-burns the operator's Claude capacity on every restart (the SDK's
+  // per-query budget resets each time).
+  const breakerConfig = loadBreakerConfig();
+  const budgetConfig = loadBudgetConfig();
+  const RESET = resetToken();
+  const SCAN_ID = process.env.N184_SCAN_ID || undefined;
+
+  let holding = false;
+  const tripped = await isTripped(redisIpc, AGENT_NAME);
+  if (tripped) {
+    holding = true;
+    log(`Restart breaker already tripped: ${tripped.reason}`);
+    await notify(
+      `⏸️ Honoré restarted with the breaker tripped (${tripped.reason}). Holding — send "${RESET}" to resume.`,
+    );
+  } else {
+    const r = await recordRestart(redisIpc, AGENT_NAME, breakerConfig);
+    log(`Start #${r.count} within ${breakerConfig.windowSec}s (limit ${breakerConfig.maxRestarts})`);
+    if (r.tripped) {
+      holding = true;
+      await notify(
+        `🛑 Honoré restart breaker tripped: ${r.state?.reason}. Holding — no queries will run until you send "${RESET}".`,
+      );
+    }
+  }
+
   // Wait for first message, then pipe as ContainerInput to main runner
   for await (const msg of redisIpc.subscribe()) {
     if (msg === null) {
       log('Close signal received, exiting');
       break;
+    }
+
+    // While the breaker is held, run nothing until the operator sends the reset
+    // token. This is what actually stops the restart loop from doing paid work.
+    if (holding) {
+      if (msg.trim() === RESET) {
+        await resetBreaker(redisIpc, AGENT_NAME);
+        holding = false;
+        log('Breaker reset by operator');
+        await notify('✅ Breaker reset — Honoré resuming normal operation.');
+      } else {
+        log(`Breaker held; ignoring message (send "${RESET}" to resume)`);
+      }
+      continue;
+    }
+
+    // Loop-safe budget gate before spawning a paid query.
+    const budget = await checkBudget(redisIpc, { config: budgetConfig, scanId: SCAN_ID });
+    if (!budget.allowed) {
+      log(`Budget gate: ${budget.reason} — skipping query`);
+      await notify(`💸 Budget cap reached: ${budget.reason}. Holding paid work.`);
+      continue;
     }
 
     log(`Received message (${msg.length} chars), starting agent query`);

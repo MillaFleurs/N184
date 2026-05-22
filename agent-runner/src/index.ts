@@ -24,6 +24,14 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
 import { RedisIPC } from './redis-ipc.js';
+import {
+  checkBudget,
+  recordUsage,
+  tokensFromUsage,
+  loadBudgetConfig,
+  resolveScanId,
+  type Usage,
+} from './budget-guard.js';
 
 // ── IPC Backend Selection ────────────────────────────────────────────
 
@@ -595,6 +603,28 @@ async function runQuery(
   const mcpServerName = IPC_BACKEND === 'redis' ? 'n184' : 'nanoclaw';
   const contextMode = getContextMode(containerInput);
   const resourceLimits = getResourceLimits(containerInput, contextMode);
+
+  // Loop-safe budget gate: refuse to start a query once cumulative spend
+  // (persisted in Redis, so it survives restarts) has hit the cap. This is
+  // what the per-query SDK budget cannot do — that ceiling resets every
+  // restart. Covers sub-agent Jobs too, since they all run through here.
+  const scanId = resolveScanId(containerInput as { scan_id?: string; scanId?: string });
+  if (redisIpc) {
+    const budget = await checkBudget(redisIpc, {
+      config: loadBudgetConfig(),
+      scanId,
+    });
+    if (!budget.allowed) {
+      log(`Budget gate: ${budget.reason} — skipping query`);
+      writeOutput({
+        status: 'error',
+        result: null,
+        error: `budget_exceeded: ${budget.reason}`,
+      });
+      return { closedDuringQuery: false };
+    }
+  }
+
   const abortController = new AbortController();
   const timeoutHandle = setTimeout(() => {
     log(`Aborting query after ${resourceLimits.timeoutMs}ms timeout`);
@@ -694,6 +724,25 @@ async function runQuery(
         log(
           `Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`,
         );
+
+        // Add this query's usage to the cumulative (Redis-persisted) counters
+        // so the budget gate above sees it on the next query — including after a
+        // restart. Tokens are the real unit under OAuth auth (total_cost_usd is
+        // computed from list prices and is ~meaningless on a subscription); we
+        // still record usd when the provider reports a real one.
+        const usage = (message as { usage?: Usage }).usage;
+        const tokens = tokensFromUsage(usage);
+        const costUsd = (message as { total_cost_usd?: number }).total_cost_usd;
+        if (redisIpc && (tokens > 0 || (typeof costUsd === 'number' && costUsd > 0))) {
+          try {
+            await recordUsage(redisIpc, { tokens, usd: costUsd, scanId });
+            log(
+              `Recorded usage: ${tokens} tokens${costUsd ? `, $${costUsd.toFixed(4)}` : ''} (scan: ${scanId ?? 'none'})`,
+            );
+          } catch (e) {
+            log(`Failed to record usage: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
         writeOutput({
           status: message.subtype === 'success' ? 'success' : 'error',
           result: textResult || null,
