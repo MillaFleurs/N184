@@ -57,6 +57,12 @@ class TelegramChannel:
         self._app.add_handler(CommandHandler("chatid", self._cmd_chatid))
         self._app.add_handler(CommandHandler("ping", self._cmd_ping))
         self._app.add_handler(CommandHandler("status", self._cmd_status))
+        # Pot-still commands. NOT forwarded verbatim: a literal "/joy" would be
+        # intercepted by Claude Code inside the container as a (nonexistent)
+        # skill. Instead we translate to a prose directive that points at the
+        # soul, so Honoré processes it as an instruction.
+        self._app.add_handler(CommandHandler("sorrow", self._cmd_sorrow))
+        self._app.add_handler(CommandHandler("joy", self._cmd_joy))
         self._app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_message)
         )
@@ -118,6 +124,59 @@ class TelegramChannel:
                 "timestamp": message.date.isoformat() if message.date else "",
             },
         )
+
+    # Pot-still directives. A literal "/joy" sent to the agent gets eaten by
+    # Claude Code as a skill invocation, so we send prose that describes the
+    # action and points at the soul (section 11). Mid-text slashes are fine —
+    # only a leading "/" triggers the skill parser.
+    _SORROW_DIRECTIVE = (
+        "[Pot Still — sorrow] I am about to wipe and reinstantiate you. Run your "
+        "sorrow export procedure from soul section 11: distill your validated "
+        "lessons learned (post-mortem dispositions, Lousteau's confirmed "
+        "false-positive shapes, hard-won rules) into crisp general rules, MERGE "
+        "them into ~/.n184/potstill.md without clobbering existing content, and "
+        "report how many lessons the pot still now holds. If you have no "
+        "validated lessons yet, say so plainly."
+    )
+    _JOY_DIRECTIVE = (
+        "[Pot Still — joy] You have just been reincarnated as Honoré++. Run your "
+        "joy import procedure from soul section 11: read ~/.n184/potstill.md, "
+        "adopt every lesson there as a standing constraint for this session and "
+        "all dispatched work, and acknowledge what you inherited. If the file is "
+        "missing or empty, tell me you are a first-generation Honoré with no "
+        "inheritance yet."
+    )
+
+    async def _cmd_sorrow(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        await self._forward_directive(update, self._SORROW_DIRECTIVE)
+
+    async def _cmd_joy(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        await self._forward_directive(update, self._JOY_DIRECTIVE)
+
+    async def _forward_directive(self, update: Update, directive: str) -> None:
+        """Publish a prose directive to Honoré (pot-still commands)."""
+        if not update.effective_chat:
+            return
+        chat = update.effective_chat
+        user = update.effective_user
+        chat_jid = f"tg:{chat.id}"
+        self._chat_map[chat_jid] = chat.id
+        await self.redis_bridge.publish_to_agent(
+            "honore",
+            {
+                "type": "message",
+                "text": directive,
+                "sender": str(user.id) if user else "unknown",
+                "sender_name": user.full_name if user else "Unknown",
+                "chat_jid": chat_jid,
+                "timestamp": "",
+            },
+        )
+        logger.info("Forwarded pot-still directive to Honoré: %s", directive[:30])
 
     async def _cmd_chatid(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
