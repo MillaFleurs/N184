@@ -6,9 +6,9 @@ Track record of verified security vulnerabilities and bugs discovered using N184
 
 ## Summary Statistics
 
-**Total Projects Analyzed:** 13
+**Total Projects Analyzed:** 14
 
-**Total Bugs Found:** 27
+**Total Bugs Found:** 28
 
 **Total Bugs Fixed:** 23
 
@@ -57,6 +57,7 @@ This list is not exhaustive. Bugs covered by NDA or those deemed particularly se
 | 25 | ncurses | cooked-mode `wgetch()` stack off-by-one | https://lists.gnu.org/archive/html/bug-ncurses/2026-05/msg00004.html | Fixed ||
 | 26 | ncurses | `infocmp -E` heap overflow in `safe_name()` | https://lists.gnu.org/archive/html/bug-ncurses/2026-05/msg00006.html | Fixed ||
 | 27 | which | OOB stack read in `--read-functions` parser on empty/NUL line | https://lists.gnu.org/archive/html/which-bugs/2026-05/msg00000.html | Fixed ||
+| 28 | shadow | shadow Security Hole Introduced / Regression in de7f1c78f70f8df4b2956f7363da3774348bc58e | https://github.com/shadow-maint/shadow/issues/1629 | Confirmed ||
 
 
 Status Explanation:
@@ -166,11 +167,19 @@ Status Explanation:
 
 **Language:** C
 
-**Analysis Period:** ay 2026
+**Analysis Period:** May 2026
 
 **Status:** First run of *Fil-de-Soie* agent tested against ncurses. 
 
+### 11.  Shadow
+
+**Language:** C
+
+**Analysis Period:** May 2026
+
+**Status:** First run of upgraded Kubernetes swarm logic
+
 ---
-**Last Updated:** Thursday, May 14th, 2026
+**Last Updated:** Saturday, May 23, 2026
 **Maintained By:** Dan Anderson & A.L. Figaro
 **N184 Repository:** https://github.com/MillaFleurs/N184
