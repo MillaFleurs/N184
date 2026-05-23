@@ -34,11 +34,22 @@ spec:
                 value: "32"
               - name: N184_QUERY_TIMEOUT_MS
                 value: "1200000"
+              # Claude auth: OAuth token or API key — both optional, and the
+              # secret omits whichever is empty so it can't shadow the other.
+              # A required ANTHROPIC_API_KEY ref would block every Vautrin Job
+              # from starting under OAuth (no API key present).
+              - name: CLAUDE_CODE_OAUTH_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: n184-api-keys
+                    key: CLAUDE_CODE_OAUTH_TOKEN
+                    optional: true
               - name: ANTHROPIC_API_KEY
                 valueFrom:
                   secretKeyRef:
                     name: n184-api-keys
                     key: ANTHROPIC_API_KEY
+                    optional: true
               - name: OPENAI_API_KEY
                 valueFrom:
                   secretKeyRef:

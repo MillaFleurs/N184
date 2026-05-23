@@ -189,6 +189,16 @@ if [ -f "$N184_ROOT/.env" ]; then
   set +a
 fi
 
+# k3d imports images from the Docker daemon, so the local-overlay build must use
+# Docker even if .env set CONTAINER_RUNTIME=podman (that value is for the
+# NanoClaw path, not this k8s path). Otherwise the image lands in podman storage
+# and `k3d image import` can't find it.
+if [ "$OVERLAY" = "local" ] && [ "${CONTAINER_RUNTIME}" != "docker" ]; then
+  warn "Overriding CONTAINER_RUNTIME=${CONTAINER_RUNTIME} → docker for k3d image build"
+  CONTAINER_RUNTIME="docker"
+fi
+export CONTAINER_RUNTIME
+
 # Claude auth: either a subscription OAuth token (CLAUDE_CODE_OAUTH_TOKEN) or an
 # API key (ANTHROPIC_API_KEY) — at least one is required. Both come from .env
 # (sourced above). Only prompt when interactive; never hang on EOF under

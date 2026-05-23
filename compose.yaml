@@ -1,0 +1,80 @@
+# N184 — podman-compose deployment (long-lived services).
+#
+# This replaces the k8s/ deploy path. The three services here are the
+# always-on core; ephemeral sub-agents (Rastignac, Vautrin, …) are spawned by
+# the controller via `podman run --network n184net` (see controller/).
+#
+# The controller itself runs on the HOST (python3 controller/main.py), not in
+# compose — it needs podman access to spawn sub-agents, and host-side podman is
+# the proven-reliable path on macOS. It reaches Redis via the published port.
+#
+#   podman compose up -d            # bring up redis + chromadb + honoré
+#   python3 controller/main.py      # start the Telegram↔Redis bridge (host)
+
+name: n184
+
+networks:
+  default:
+    name: n184net          # fixed name so the host controller can attach sub-agents
+
+services:
+  redis:
+    image: docker.io/library/redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"        # published so the host-side controller can connect
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  chromadb:
+    image: ghcr.io/chroma-core/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/data
+    restart: unless-stopped
+
+  honore:
+    image: localhost/n184-agent:latest
+    # The image ENTRYPOINT is the file-IPC entrypoint; override it to run the
+    # persistent Redis-subscribing Honoré loop (matches the old honore.yaml).
+    entrypoint: ["node", "/app/dist/honore-entrypoint.js"]
+    depends_on:
+      - redis
+    # .env supplies CLAUDE_CODE_OAUTH_TOKEN (subscription auth) + DeepSeek key.
+    env_file:
+      - ./.env
+    environment:
+      IPC_BACKEND: redis
+      REDIS_URL: redis://redis:6379
+      N184_AGENT_NAME: honore
+      N184_GROUP_FOLDER: main
+      N184_CHAT_JID: telegram
+      ASSISTANT_NAME: Honoré
+      CHROMADB_HOST: chromadb
+      CHROMADB_PORT: "8000"
+      # Per-query SDK ceiling (approximate under OAuth).
+      N184_MAX_TURNS: "40"
+      N184_MAX_BUDGET_USD: "5"
+      # Loop-safe, Redis-persisted cumulative cap + restart breaker (Phase 0).
+      # TOKENS are the real capacity unit under a Claude subscription — TUNE.
+      N184_DAILY_TOKEN_CAP: "20000000"
+      N184_MAX_RESTARTS: "5"
+      N184_RESTART_WINDOW_SEC: "600"
+      N184_QUERY_TIMEOUT_MS: "1800000"
+      N184_RECOVERY_MAX_TURNS: "12"
+    volumes:
+      - ./souls/claude-honore.md:/workspace/group/CLAUDE.md:ro
+      - ./providers:/etc/n184/providers:ro
+      - honore-palace:/home/node/.n184
+      - honore-sessions:/home/node/.claude
+    # The Phase-0 breaker stops a crash loop from burning capacity, so a plain
+    # restart policy is safe here (the breaker idles Honoré after N restarts).
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  chroma-data:
+  honore-palace:
+  honore-sessions:

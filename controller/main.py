@@ -16,7 +16,7 @@ import signal
 import sys
 
 from channel import ChannelRouter
-from job_manager import JobManager
+from podman_runner import PodmanJobManager
 from redis_bridge import RedisBridge
 from telegram_bot import TelegramChannel
 from slack_channel import SlackChannel
@@ -57,8 +57,8 @@ async def main() -> None:
 
     # ── Initialize components ─────────────────────────────────────────
 
-    # 1. Job manager (k8s client)
-    job_manager = JobManager(redis_bridge=None)  # type: ignore[arg-type]
+    # 1. Job manager (podman — spawns sub-agents via `podman run`)
+    job_manager = PodmanJobManager(redis_bridge=None)  # type: ignore[arg-type]
     job_manager.initialize()
 
     # 2. Channel router
@@ -136,6 +136,12 @@ async def main() -> None:
     task_watcher, message_relay = await redis_bridge.start()
     logger.info("Redis bridge started (task watcher + message relay)")
 
+    # Vautrin autoscaler (replaces KEDA): spawns workers from queue depth
+    vautrin_scaler = asyncio.create_task(
+        job_manager.vautrin_scaler(redis_bridge._client)
+    )
+    logger.info("Vautrin autoscaler started")
+
     # Start all registered channels
     await router.start_all()
     logger.info("All channels started")
@@ -162,6 +168,7 @@ async def main() -> None:
     await router.stop_all()
     task_watcher.cancel()
     message_relay.cancel()
+    vautrin_scaler.cancel()
     await redis_bridge.stop()
     logger.info("N184 Controller stopped.")
 
