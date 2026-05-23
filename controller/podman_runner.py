@@ -33,10 +33,14 @@ AGENT_IMAGE = os.environ.get("N184_AGENT_IMAGE", "localhost/n184-agent:latest")
 NETWORK = os.environ.get("N184_PODMAN_NETWORK", "n184net")
 # Sub-agents reach Redis/ChromaDB by compose service name on the shared network.
 AGENT_REDIS_URL = os.environ.get("N184_AGENT_REDIS_URL", "redis://redis:6379")
-PALACE_VOLUME = os.environ.get("N184_PALACE_VOLUME", "n184_honore-palace")
 
 # Repo root = parent of this file's directory (controller/..).
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Shared Memory Palace on the host (same dir Honoré mounts via compose), so
+# Lousteau's lessons and findings are visible across all agents and survive a
+# podman reset. Overridable for non-default layouts.
+PALACE_DIR = os.environ.get("N184_PALACE_DIR", str(REPO_ROOT / "data" / "palace"))
 
 # API-key env vars forwarded from the controller's environment into sub-agents.
 # Only those actually set are passed (an empty ANTHROPIC_API_KEY would shadow
@@ -139,8 +143,8 @@ class PodmanJobManager:
             args += ["-v", f"{providers}:/etc/n184/providers:ro"]
         if refs.is_dir():
             args += ["-v", f"{refs}:/workspace/refs:ro"]
-        # Shared Memory Palace (Lousteau writes, others read).
-        args += ["-v", f"{PALACE_VOLUME}:/home/node/.n184"]
+        # Shared Memory Palace (Lousteau writes, others read) — host dir.
+        args += ["-v", f"{PALACE_DIR}:/home/node/.n184"]
         return args
 
     async def create_agent_job(

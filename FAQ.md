@@ -6,7 +6,7 @@ Below are some frequently asked questions about N184.
 
 Check out the README.md.  It has quick start instructions.
 
-Essentially you clone our repository, ensure you have dependencies like Python, Podman, and Claude, edit the .env file using .env.example as a template to include your API tokens, and then let it rip with ```./init.sh```.  Honoré does the rest.
+Essentially you clone our repository, ensure you have dependencies like Python, Podman, and Claude, edit the .env file using .env.example as a template to include your API tokens, and then let it rip with ```./start.sh```.  Honoré does the rest.
 
 ## What is N184?
 

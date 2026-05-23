@@ -743,6 +743,25 @@ async function runQuery(
             log(`Failed to record usage: ${e instanceof Error ? e.message : String(e)}`);
           }
         }
+        // Deliver the reply over Redis. The controller relays n184:messages —
+        // it does NOT read the container's stdout — so the agent's result must
+        // be published there or it never reaches the operator. Only the main
+        // agent (Honoré) talks to the operator's chat; sub-agents report back
+        // to Honoré, not the user, so they don't auto-publish.
+        if (redisIpc && containerInput.isMain && textResult && containerInput.chatJid) {
+          try {
+            await redisIpc.sendMessage({
+              chatJid: containerInput.chatJid,
+              text: textResult,
+              sender: containerInput.assistantName || AGENT_NAME,
+              agentName: AGENT_NAME,
+            });
+            log(`Published reply to n184:messages:${containerInput.chatJid}`);
+          } catch (e) {
+            log(`Reply publish failed: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+
         writeOutput({
           status: message.subtype === 'success' ? 'success' : 'error',
           result: textResult || null,

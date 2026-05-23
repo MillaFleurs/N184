@@ -24,7 +24,9 @@ N184/
 │   └── config.py          #   Constants: halls, severities, paths
 ├── n184_palace_cli.py     # CLI wrapper for agents to call from bash
 ├── n184-palace            # Shell entry point for the CLI
-├── init.sh                # NanoClaw bootstrap and deployment script
+├── start.sh               # Bring up N184 (podman + compose) — replaces init.sh
+├── stop.sh                # Tear down N184
+├── compose.yaml           # Podman-compose: Honoré + Redis + ChromaDB
 ├── souls/                 # Agent persona definitions ("soul files")
 │   ├── claude-honore.md   #   Lead orchestrator
 │   ├── claude-vautrin.md  #   Vulnerability hunter
@@ -35,7 +37,12 @@ N184/
 │   └── refs/              #   Shared reference docs (bundled into agent pods)
 │       └── malloc-hardening.md
 ├── action                 # Standalone CLI: ./action --pull-the-thread ...
-├── build/                 # Built NanoClaw instance (runtime artifacts)
+├── agent-runner/          # TypeScript agent runtime (Claude Agent SDK + Redis IPC)
+├── controller/            # Python control plane (Telegram bridge + podman dispatch)
+├── providers/             # AI provider registry (anthropic, openai, deepseek, ...)
+├── container/             # Agent container image (Dockerfile + build.sh)
+├── k8s/                   # Legacy Kubernetes manifests (superseded by compose)
+├── data/                  # Honoré's host data: palace, sessions, etc. (gitignored)
 ├── __pycache__/           # Python bytecode cache (auto-generated)
 ├── README.md              # Project introduction and quick start
 ├── OVERVIEW.md            # This file
@@ -152,7 +159,7 @@ The memory palace uses a spatial metaphor to organize knowledge:
 
 ## Agent Soul Files (`souls/`)
 
-Each file defines the personality, role, methodology, and output format for one agent in the swarm. These are deployed as `CLAUDE.md` files inside NanoClaw containers.
+Each file defines the personality, role, methodology, and output format for one agent in the swarm. These are mounted as the `CLAUDE.md` file inside each agent container.
 
 ### `claude-honore.md` -- Lead Orchestrator
 
@@ -242,44 +249,44 @@ Adding a new specialist agent is one entry in the `VERBS` registry at the top of
 
 ---
 
-## `init.sh` -- Bootstrap Script
+## Running N184 -- `start.sh` / `stop.sh`
 
-The main setup script that installs and configures the entire NanoClaw + N184 stack. Steps:
+N184 runs as a podman-compose stack plus a host-side controller. This replaced
+the old single-container `init.sh`/NanoClaw bootstrap.
 
-1. Clones NanoClaw if not present
-2. Detects container runtime (prefers Podman > Docker > Apple Container)
-3. Pre-flight checks (Node.js >= 20, container runtime, .env file)
-4. Installs npm dependencies
-5. Installs Telegram channel (git merge from separate repo)
-6. Patches container runtime to use absolute paths
-7. Builds TypeScript
-8. Builds container image
-9. Tests container with a hello prompt
-10. Deploys soul files (Honoré as main, plus Vautrin and Rastignac)
-11. Registers main group and optional Telegram chat
-12. Creates mount allowlist, syncs .env, generates launcher wrapper
-13. Sets up background service (launchd on macOS, systemd on Linux)
-14. Optionally launches interactive Claude Code shell (`--shell` flag)
+**`start.sh`** brings everything up (idempotent — safe to re-run):
 
----
+1. Ensures the podman machine is running
+2. Builds the agent image (`container/build.sh`) if missing (`--build` forces it)
+3. `podman compose up -d` — starts **Honoré + Redis + ChromaDB**
+4. Creates the controller's python3.12 venv on first run
+5. Starts exactly one **controller** (host process) — a duplicate would fight
+   over the Telegram `getUpdates` poll and both would fail
 
-## `build/` -- Built NanoClaw Instance
+**`stop.sh`** stops the controller and runs `podman compose down` (the `./data/`
+directory is preserved).
 
-Contains the full built NanoClaw installation after `init.sh` runs. This includes:
+### The two layers
 
-- `nanoclaw/` -- The cloned and built NanoClaw framework
-  - `src/` -- TypeScript source
-  - `dist/` -- Compiled JavaScript
-  - `container/` -- Dockerfile and agent-runner
-  - `groups/main/` -- Main group config with deployed soul files
-  - `store/` -- SQLite message database
-  - `data/` -- Sessions, IPC, environment
-  - `logs/` -- Runtime logs
-  - `node_modules/` -- npm dependencies
-- `init.sh`, `run.sh` -- Generated launcher scripts
-- `souls/` -- Deployed copies of agent soul files
+- **Compose stack** (in podman, defined in `compose.yaml`): Honoré (persistent,
+  subscribes to Redis), Redis (IPC + budget/breaker state + work queues), and
+  ChromaDB (vector store).
+- **Controller** (on the host, `controller/main.py`): bridges Telegram ↔ Redis
+  and spawns specialist sub-agents on demand via `podman run` (`controller/
+  podman_runner.py`) — replacing the k8s Jobs + KEDA of the legacy `k8s/` path.
+  It runs on the host because host-side podman is the reliable path on macOS.
 
-This is a runtime artifact, not source code.
+## `data/` -- Honoré's Persistent State
+
+A host directory bind-mounted into the containers (replaces the old `build/`
+runtime artifacts):
+
+- `data/palace/` -- Memory Palace (findings, lessons, the `/sorrow` pot still)
+- `data/sessions/` -- Claude Code session continuity
+- `data/chroma/`, `data/redis/` -- vector store + runtime state
+
+Because it is a plain host folder it survives `compose down` and even a
+`podman system reset`, and you back it up by copying `data/`. It is gitignored.
 
 ---
 
@@ -287,7 +294,7 @@ This is a runtime artifact, not source code.
 
 ### `README.md` -- Project Introduction
 
-Covers what N184 is, system requirements (Podman, Python 3.11+, NanoClaw, API keys), quick start guide (clone, configure .env, run init.sh, talk to Honoré via Telegram), and the Balzac agent naming convention.
+Covers what N184 is, system requirements (Podman, podman compose, Python 3.12, API keys), quick start guide (clone, configure .env, run ./start.sh, talk to Honoré via Telegram), and the Balzac agent naming convention.
 
 ### `FAQ.md` -- Frequently Asked Questions
 
@@ -336,19 +343,21 @@ Slide deck for presenting N184.
 ## How It All Fits Together
 
 ```
-Human (HIL) <--Telegram/CLI--> NanoClaw Container
-                                    |
-                                 Honoré (orchestrator)
+Human (HIL) <--Telegram--> Controller (host process)
+                                |  bridges Telegram <-> Redis;
+                                |  spawns sub-agents via `podman run`
+                                v
+       Redis  <------------>  Honoré (container, orchestrator)
                                /   |    \     \        \
                         Rastignac  |  Bianchon Goriot  Lousteau
                          (recon)   |   (docs)  (cons.) (memory)
                                    |
                              Vautrin Swarm
-                          (autoscaled hunters,
-                           different AI models)
+                       (controller-scaled hunters,
+                        different AI models)
                                    |
                                    v
-                            Memory Palace
+                       Memory Palace (./data/palace)
                            /              \
                      SQLite DB         ChromaDB
                   (relationships)    (7 halls of

@@ -20,3 +20,16 @@ node_modules/
 dist/
 agent-runner/dist/
 agent-runner/node_modules/
+
+# N184 podman+compose runtime state (start.sh / stop.sh).
+# (gitignore has no inline comments — keep patterns on their own lines.)
+# Honoré's data: palace, sessions, chroma, redis
+data/
+# controller + service logs
+logs/
+# host controller python venv
+controller/.venv/
+# running controller pid
+.controller.pid
+# empty docker config (bypasses the osxkeychain helper)
+.n184-docker-empty/

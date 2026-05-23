@@ -8,17 +8,20 @@ N184 uses multi-model AI consensus (Claude, DeepSeek, ChatGPT, Gemini) to find b
 
 > **Migration Notice:**
 >
-> I have a lot of experiments from when I was building N184 that need to be moved over now that we have a good, working, base version.
->
-> N184 is actively migrating from NanoClaw/Podman to a Kubernetes-native architecture. The `main` branch may be unstable during this transition. For a stable release, use the tagged version:
+> N184 is migrating from the original single-container NanoClaw setup to a
+> multi-agent **podman + compose** architecture: Honoré + Redis + ChromaDB run as
+> compose services, and a host-side controller spawns specialist sub-agents on
+> demand. The `main` branch may be unstable during this transition. For the old
+> stable release:
 >
 > ```bash
 > git clone https://github.com/MillaFleurs/N184.git
 > cd N184
-> git checkout v1.0.0
+> git checkout v1.0.0   # original NanoClaw/Podman setup (./init.sh)
 > ```
 >
-> v1.0.0 uses the original NanoClaw/Podman setup via `./init.sh`. See the [ROADMAP](ROADMAP.md) for what's changing.
+> Current `main` is brought up with `./start.sh` — see [Quick Start](#quick-start).
+> See the [ROADMAP](ROADMAP.md) for what's changing.
 
 ---
 
@@ -130,7 +133,10 @@ At minimum, you need an Anthropic key. Additional providers enable multi-model c
 
 ## Quick Start
 
-### Option A: Kubernetes (Recommended)
+### Podman + Compose (default)
+
+Requirements: a running **podman machine** (`podman machine start`), **podman compose**,
+and **python3.12** (for the host controller).
 
 ```bash
 # 1. Clone
@@ -139,32 +145,25 @@ cd N184
 
 # 2. Configure
 cp .env.example .env
-# Edit .env with your API keys and channel credentials
+# Edit .env: CLAUDE_CODE_OAUTH_TOKEN (or ANTHROPIC_API_KEY) + a channel token
+# (e.g. TELEGRAM_BOT_TOKEN). Optionally DEEPSEEK_API_KEY for the multi-model swarm.
 
-# 3. Deploy
-bash k8s/setup.sh
+# 3. Start everything
+./start.sh            # add --build to force a fresh agent-image build
 
-# 4. Talk to Honoré via your configured channel (Telegram, Slack, or Email)
+# 4. Talk to Honoré via your configured channel (Telegram)
 ```
 
-The setup script handles everything: installs k3s/k3d, installs KEDA, builds container images, creates secrets, and deploys all pods.
+`./start.sh` brings up the two layers and is safe to re-run:
 
-To enable secrets encryption at rest:
+1. **Compose stack** (podman): **Honoré + Redis + ChromaDB**.
+2. **Controller** (host process): the Telegram↔Redis bridge that spawns specialist
+   sub-agents (Rastignac, Vautrin, …) on demand via `podman run`.
 
-```bash
-bash k8s/setup.sh --encrypt-secrets
-```
+Stop everything with `./stop.sh`. Honoré's data persists in **`./data/`** on the host
+(palace, sessions, ChromaDB, Redis) — see [Data & Persistence](#data--persistence).
 
-### Option B: NanoClaw/Podman (v1.0.0)
-
-```bash
-git checkout v1.0.0
-cp .env.example .env
-# Edit .env
-./init.sh
-```
-
-### Option C: Standalone — `./action` CLI
+### Standalone — `./action` CLI
 
 For operators who don't run the full k8s deployment (or who want a quick
 focused scan without engaging the orchestrator dialogue), N184 ships a
@@ -206,11 +205,10 @@ edit the `VERBS` registry at the top of `action` and drop the soul into
 ### Monitoring
 
 ```bash
-kubectl get pods -n n184                    # Pod status
-kubectl logs -f deploy/honore -n n184       # Honoré logs
-kubectl logs -f deploy/controller -n n184   # Controller logs
-kubectl get jobs -n n184                    # Sub-agent Jobs
-kubectl get scaledjob -n n184              # Vautrin autoscaler status
+podman ps                                  # Service status (honoré, redis, chromadb)
+podman logs -f n184-honore-1               # Honoré logs
+tail -f logs/controller.log                # Controller logs (host process)
+podman ps --filter name=vautrin            # Running sub-agents
 ```
 
 ---
@@ -218,8 +216,10 @@ kubectl get scaledjob -n n184              # Vautrin autoscaler status
 ## Configuration (.env)
 
 ```bash
-# Required
-ANTHROPIC_API_KEY=sk-ant-...
+# Claude auth — provide ONE (OAuth token for a Claude subscription, recommended,
+# or an API key). Honoré + claude-backed sub-agents use whichever is set.
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat...
+#ANTHROPIC_API_KEY=sk-ant-...
 
 # At least one messaging channel
 TELEGRAM_BOT_TOKEN=123456:ABC...
@@ -231,11 +231,28 @@ EMAIL_IMAP_PASS=app-password
 EMAIL_SMTP_HOST=smtp.gmail.com
 EMAIL_POLL_INTERVAL=60
 
-# Optional multi-model providers
+# Optional multi-model providers (for the swarm)
 OPENAI_API_KEY=sk-...
 DEEPSEEK_API_KEY=sk-...
 GEMINI_API_KEY=AI...
 ```
+
+---
+
+## Data & Persistence
+
+Honoré's state lives in **`./data/`** on the host (the compose services bind-mount it;
+this replaces the old `./nanoclaw` directory):
+
+| Path | Contents |
+| --- | --- |
+| `./data/palace/` | Memory Palace — findings, lessons learned, the `/sorrow` pot still |
+| `./data/sessions/` | Claude Code session continuity for Honoré |
+| `./data/chroma/` | ChromaDB vector store (semantic search over the palace) |
+| `./data/redis/` | Redis state — IPC queues, budget counters, restart-breaker state |
+
+Because it's a plain host directory, it survives `./stop.sh` / `compose down` **and** a
+`podman system reset`, and you back it up by copying `./data/`. It's `.gitignore`d.
 
 ---
 

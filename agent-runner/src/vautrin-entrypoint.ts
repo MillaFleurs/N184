@@ -42,7 +42,7 @@ async function main(): Promise<void> {
 
   try {
     // Run the main agent-runner with the task as stdin
-    execFileSync('bash', ['-c', `cat ${inputPath} | node /tmp/dist/index.js`], {
+    execFileSync('bash', ['-c', `cat ${inputPath} | node /app/dist/index.js`], {
       stdio: ['pipe', 'inherit', 'inherit'],
       env: {
         ...process.env,

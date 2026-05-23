@@ -146,7 +146,7 @@ async function main(): Promise<void> {
       prompt: recoveryPending ? recoveryPrompt(msg) : msg,
       sessionId: activeSessionId,
       groupFolder: GROUP_FOLDER,
-      chatJid: CHAT_JID,
+      chatJid: redisIpc.lastChatJid || CHAT_JID,
       isMain: true,
       assistantName: ASSISTANT_NAME,
       contextMode,
@@ -162,7 +162,7 @@ async function main(): Promise<void> {
       const { spawn } = await import('child_process');
       const child = spawn(
         'bash',
-        ['-c', `cat ${inputPath} | node /tmp/dist/index.js`],
+        ['-c', `cat ${inputPath} | node /app/dist/index.js`],
         {
           stdio: ['pipe', 'inherit', 'inherit'],
           env: {

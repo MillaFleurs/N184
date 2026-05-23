@@ -21,6 +21,13 @@ export class RedisIPC {
   private sub: IORedis;
   private agentName: string;
   private closed = false;
+  /**
+   * chat_jid of the most recent inbound message (e.g. "tg:8553719108"). The
+   * persistent Honoré loop reads this to reply to the chat the message came
+   * from, rather than a static env default — otherwise replies route to the
+   * wrong jid and the controller's relay drops them.
+   */
+  lastChatJid: string | null = null;
 
   constructor(redisUrl: string, agentName: string) {
     this.agentName = agentName;
@@ -57,6 +64,9 @@ export class RedisIPC {
       } else if (channel === inputChannel) {
         try {
           const data = JSON.parse(message);
+          if (data.chat_jid || data.chatJid) {
+            this.lastChatJid = data.chat_jid || data.chatJid;
+          }
           if (data.text) {
             push(data.text);
           } else if (typeof data === 'string') {

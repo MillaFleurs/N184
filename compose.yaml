@@ -24,7 +24,7 @@ services:
     ports:
       - "6379:6379"        # published so the host-side controller can connect
     volumes:
-      - redis-data:/data
+      - ./data/redis:/data
     restart: unless-stopped
 
   chromadb:
@@ -32,7 +32,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - chroma-data:/data
+      - ./data/chroma:/data
     restart: unless-stopped
 
   honore:
@@ -67,14 +67,13 @@ services:
     volumes:
       - ./souls/claude-honore.md:/workspace/group/CLAUDE.md:ro
       - ./providers:/etc/n184/providers:ro
-      - honore-palace:/home/node/.n184
-      - honore-sessions:/home/node/.claude
+      # Host-visible data dir (replaces the old ./nanoclaw). Survives
+      # `compose down` and even a `podman system reset`, and is where the
+      # /sorrow pot still will live so lessons survive a reinstantiation.
+      - ./data/palace:/home/node/.n184
+      - ./data/sessions:/home/node/.claude
     # The Phase-0 breaker stops a crash loop from burning capacity, so a plain
     # restart policy is safe here (the breaker idles Honoré after N restarts).
     restart: unless-stopped
 
-volumes:
-  redis-data:
-  chroma-data:
-  honore-palace:
-  honore-sessions:
+# No named volumes: all state lives under ./data/ on the host (see above).
