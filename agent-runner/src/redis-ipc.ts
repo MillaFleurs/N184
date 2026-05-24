@@ -64,8 +64,13 @@ export class RedisIPC {
       } else if (channel === inputChannel) {
         try {
           const data = JSON.parse(message);
-          if (data.chat_jid || data.chatJid) {
-            this.lastChatJid = data.chat_jid || data.chatJid;
+          const cj = data.chat_jid || data.chatJid;
+          // Only real channel jids (tg:/slack:/email:) become the reply target.
+          // An internal "agent:" finding (a sub-agent reporting to Honoré) must
+          // NOT hijack it, or Honoré would reply into the agent bus instead of
+          // back to the operator.
+          if (cj && !String(cj).startsWith('agent:')) {
+            this.lastChatJid = cj;
           }
           if (data.text) {
             push(data.text);

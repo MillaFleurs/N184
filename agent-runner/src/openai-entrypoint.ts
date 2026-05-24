@@ -31,6 +31,12 @@
 import fs from 'fs';
 import OpenAI from 'openai';
 import { RedisIPC } from './redis-ipc.js';
+import {
+  checkBudget,
+  recordUsage,
+  loadBudgetConfig,
+  resolveScanId,
+} from './budget-guard.js';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const AGENT_NAME = process.env.N184_AGENT_NAME || 'agent';
@@ -51,6 +57,8 @@ interface ContainerInput {
   assistantName?: string;
   provider?: string;
   model?: string;
+  scan_id?: string;
+  scanId?: string;
   script?: string;
   contextMode?: string;
   context_mode?: string;
@@ -263,10 +271,19 @@ async function main(): Promise<void> {
   ];
 
   const maxTurns = getMaxTurns(containerInput);
+  const scanId = resolveScanId(containerInput);
+  const budgetConfig = loadBudgetConfig();
   for (let turn = 0; turn < maxTurns; turn++) {
     const killed = await isSwarmKilled(redis);
     if (killed) {
       log(`Stopping because swarm kill switch is active: ${killed}`);
+      break;
+    }
+    // Loop-safe budget gate (token-based, persisted in Redis) — the same cap
+    // the Claude path honors, so DeepSeek/Ollama spend counts toward it too.
+    const budget = await checkBudget(redis, { config: budgetConfig, scanId });
+    if (!budget.allowed) {
+      log(`Budget gate: ${budget.reason} — stopping`);
       break;
     }
     log(`Turn ${turn + 1}/${maxTurns}`);
@@ -275,6 +292,16 @@ async function main(): Promise<void> {
       messages,
       tools: TOOLS,
     });
+    // Meter token usage so the cumulative cap sees this provider's spend.
+    if (response.usage) {
+      const u = response.usage;
+      const tokens = u.total_tokens ?? ((u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0));
+      try {
+        await recordUsage(redis, { tokens, scanId });
+      } catch (e) {
+        log(`usage record failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
 
     const choice = response.choices[0];
     const assistantMsg = choice.message;

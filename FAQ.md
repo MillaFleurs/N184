@@ -42,7 +42,7 @@ Put another way, ensemble methods also allow you to tailor things a number of wa
 
 ## How do you support so many models?
 
-We chose the NanoClaw architecture for this reason.  At the end of the day, if you want to do something that is not supported out of the box, go to your NanoClaw directory, and invoke ```claude```.  You can tell Claude Code exactly what changes you need to make.  Just be sure to also ask it to package it and submit as a PR if it's something cool so we can all take advantage of your genius.
+N184 dispatches each sub-agent against a provider from a small registry (`providers/registry.yaml` — Anthropic, OpenAI, and DeepSeek out of the box; add your own, such as a local Ollama, in `providers/registry.local.yaml`). Honoré picks the provider and model per dispatch, so a single scan can fan out across genuinely different models. If you want behavior that isn't supported out of the box, edit the agent souls in `souls/` (or the controller) and invoke ```claude``` right here in the repo — you can tell Claude Code exactly what changes you need. Just be sure to also ask it to package it and submit as a PR if it's something cool so we can all take advantage of your genius.
 
 ## How do you achieve model independence? Don't all LLMs make similar mistakes?
 
@@ -82,9 +82,9 @@ Other models may be supported by default in the future or can be supported if yo
 
 ## Can I run this locally or air-gapped?
 
-Out of the box we require an Anthropic subscription for NanoClaw.  *However* there is no reason you couldn't set this up to run against an on premises model, although it might take some work.  If you do, please contribute your changes back to us at github.
+Honoré (the orchestrator) runs on Claude, so you need a Claude subscription (or an Anthropic API key) for him. But sub-agents can run on **local models via Ollama today**: install Ollama, pull a model, add it to `providers/registry.local.yaml`, and Honoré can dispatch Vautrin (and the others) against it — no API key, fully local. So you can already push most of the analysis volume on-prem.
 
-That is currently on our to do list and will hopefully be in a future release.  We're big fans of Apple Silicon's unified architecture and are currently working on implementing an [MLX](https://opensource.apple.com/projects/mlx/) backend.
+A fully air-gapped Honoré (a local orchestrator) is still on the to-do list. We're big fans of Apple Silicon's unified architecture and are eyeing an [MLX](https://opensource.apple.com/projects/mlx/) backend.
 
 ## What's your disclosure policy?
 
@@ -151,7 +151,7 @@ Glasswing and N184 are extreme examples of *convergent evolution*.  Birds grew f
 
 ## What's coming next?
 
-The main push for v. 1.0 was to organize my verious experiments in agentic bug searching into something portable.  Right now, that means we really just have a wrapper around NanoClaw, providing a set of standard instructions as to what NanoClaw shoudl do.  That's useful, and extremely helpful.  **But there's more**
+The main push for v1.0 was to organize my various experiments in agentic bug searching into something portable.  Right now that's a **podman + compose swarm**: Honoré orchestrating specialist sub-agents (Rastignac, Vautrin, Bianchon, Lousteau, Fil-de-Soie) across multiple models, backed by a Memory Palace and a **pot still** that carries distilled lessons across reinstantiations (`./export.sh --to-git` even shares them via git).  That's useful, and extremely helpful.  **But there's more**
 
 The roadmap is, roughly:
 

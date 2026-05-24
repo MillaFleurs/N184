@@ -40,7 +40,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Shared Memory Palace on the host (same dir Honoré mounts via compose), so
 # Lousteau's lessons and findings are visible across all agents and survive a
 # podman reset. Overridable for non-default layouts.
-PALACE_DIR = os.environ.get("N184_PALACE_DIR", str(REPO_ROOT / "data" / "palace"))
+PALACE_DIR = os.environ.get("N184_PALACE_DIR", str(REPO_ROOT / "build" / "data" / "palace"))
+
+# Shared workspace where target repos live (Honoré clones here; sub-agents read
+# the same tree; the operator collaborates via ./build/workspace on the host).
+WORKSPACE_DIR = Path(
+    os.environ.get("N184_WORKSPACE_DIR", str(REPO_ROOT / "build" / "workspace"))
+)
 
 # API-key env vars forwarded from the controller's environment into sub-agents.
 # Only those actually set are passed (an empty ANTHROPIC_API_KEY would shadow
@@ -145,6 +151,10 @@ class PodmanJobManager:
             args += ["-v", f"{refs}:/workspace/refs:ro"]
         # Shared Memory Palace (Lousteau writes, others read) — host dir.
         args += ["-v", f"{PALACE_DIR}:/home/node/.n184"]
+        # Shared workspace: the target repo (cloned by Honoré into
+        # /workspace/shared) so every sub-agent analyzes the same tree.
+        if WORKSPACE_DIR.is_dir():
+            args += ["-v", f"{WORKSPACE_DIR}:/workspace/shared"]
         return args
 
     async def create_agent_job(
@@ -186,6 +196,8 @@ class PodmanJobManager:
             "run", "-d", "--rm",
             "--name", job_name,
             "--network", NETWORK,
+            # Reach the host's Ollama (and any host service) at host.containers.internal.
+            "--add-host", "host.containers.internal:host-gateway",
             *self._common_env(agent_name, job_name, resolved, resource_limits, scan_id),
             *self._common_mounts(agent_name),
             "--entrypoint", "",  # clear image ENTRYPOINT; runtime_command is argv
@@ -221,6 +233,8 @@ class PodmanJobManager:
             "run", "-d", "--rm",
             "--name", job_name,
             "--network", NETWORK,
+            # Reach the host's Ollama (and any host service) at host.containers.internal.
+            "--add-host", "host.containers.internal:host-gateway",
             *self._common_env("vautrin", job_name, resolved, None, None),
             *self._common_mounts("vautrin"),
             "--entrypoint", "",

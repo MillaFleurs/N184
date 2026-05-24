@@ -139,7 +139,9 @@ class RedisBridge:
             container_input = {
                 "prompt": prompt,
                 "groupFolder": f"n184-{target_agent}",
-                "chatJid": data.get("targetJid", ""),
+                # Report findings back to Honoré for aggregation (not straight to
+                # the operator). The relay routes "agent:" jids into n184:input:honore.
+                "chatJid": "agent:honore",
                 "isMain": False,
                 "isScheduledTask": True,
                 "assistantName": "Vautrin",
@@ -169,6 +171,8 @@ class RedisBridge:
                 agent_name=target_agent,
                 prompt=prompt,
                 session_id=session_id,
+                # Findings report back to Honoré for aggregation (see relay).
+                chat_jid="agent:honore",
                 provider=provider,
                 model=model,
                 context_mode=context_mode,
@@ -219,6 +223,26 @@ class RedisBridge:
                 sender = data.get("sender")
 
                 if not text:
+                    continue
+
+                # Sub-agent findings carry chatJid "agent:<name>" — route them
+                # into that agent's input (Honoré) for aggregation, tagged with
+                # the source, instead of out to a messaging channel.
+                if chat_jid.startswith("agent:"):
+                    target = chat_jid.split(":", 1)[1] or "honore"
+                    src = data.get("agentName", "agent")
+                    await self.publish_to_agent(
+                        target,
+                        {
+                            "type": "message",
+                            "text": f"[finding from {src}]\n\n{text}",
+                            "sender": src,
+                            "chat_jid": chat_jid,
+                        },
+                    )
+                    logger.info(
+                        "Routed %s finding → %s input (%d chars)", src, target, len(text)
+                    )
                     continue
 
                 logger.info(

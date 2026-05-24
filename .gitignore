@@ -33,3 +33,8 @@ controller/.venv/
 .controller.pid
 # empty docker config (bypasses the osxkeychain helper)
 .n184-docker-empty/
+# Shared workspace: target repos for Honoré + operator collaboration
+workspace/
+
+# Timestamped pot-still exports from export.sh --file
+potstill-*.md

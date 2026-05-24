@@ -20,6 +20,7 @@ import {
   resetToken,
 } from './budget-guard.js';
 import { execFile } from 'child_process';
+import { randomUUID } from 'crypto';
 import fs from 'fs';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -61,6 +62,19 @@ async function main(): Promise<void> {
 
   log(`Honore persistent mode started (agent: ${AGENT_NAME})`);
   log(`Subscribing to n184:input:${AGENT_NAME}...`);
+
+  // Lifecycle boot marker: a fresh, stable id for this Honoré instance, written
+  // where the agent can read it (~/.n184/.boot). /joy compares it against the
+  // last-joy id in ~/.n184/lifecycle.json so it imports once per real life —
+  // not on every message (the sorrow/joy churn fix).
+  try {
+    fs.writeFileSync(
+      '/home/node/.n184/.boot',
+      JSON.stringify({ boot_id: randomUUID(), started_at: new Date().toISOString() }),
+    );
+  } catch (e) {
+    log(`Could not write boot marker: ${e instanceof Error ? e.message : String(e)}`);
+  }
 
   // Restore session
   const sessionId = await redisIpc.getSessionId(AGENT_NAME);

@@ -17,7 +17,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 IMAGE="localhost/n184-agent:latest"
-LOG_DIR="$ROOT/logs"
+# All runtime state lives under ./build/ (git-ignored) so the repo stays
+# source-only. Share distilled lessons via `./export.sh --to-git`.
+LOG_DIR="$ROOT/build/logs"
 CTRL_LOG="$LOG_DIR/controller.log"
 CTRL_PID="$ROOT/.controller.pid"
 # Empty Docker config so `podman compose` (which shells out to docker-compose)
@@ -35,9 +37,12 @@ FORCE_BUILD=false
 [ -f "$ROOT/.env" ] || fail "No .env found. Copy .env.example to .env and fill in CLAUDE_CODE_OAUTH_TOKEN (or ANTHROPIC_API_KEY) + TELEGRAM_BOT_TOKEN."
 mkdir -p "$LOG_DIR"
 mkdir -p "$DOCKER_CFG"; echo '{}' > "$DOCKER_CFG/config.json"
-# Honoré's host-visible data dir (replaces the old ./nanoclaw). Persists across
-# `compose down` and `podman system reset`; back it up by copying ./data.
-mkdir -p "$ROOT/data/palace" "$ROOT/data/sessions" "$ROOT/data/chroma" "$ROOT/data/redis"
+# Honoré's host-visible data dir under ./build/ (git-ignored). Persists across
+# `compose down` and `podman system reset`; back it up by copying ./build/data.
+# NOTE: ./build holds the pot still — do not `rm -rf ./build` without first
+# running `./export.sh --to-git` to preserve the distilled lessons.
+mkdir -p "$ROOT/build/data/palace" "$ROOT/build/data/sessions" \
+         "$ROOT/build/data/chroma" "$ROOT/build/data/redis" "$ROOT/build/workspace"
 
 # A leftover NanoClaw launchd job would poll the same Telegram token and cause a
 # Conflict. Warn (don't auto-disable the user's services).

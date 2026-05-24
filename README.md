@@ -160,8 +160,8 @@ cp .env.example .env
 2. **Controller** (host process): the Telegram↔Redis bridge that spawns specialist
    sub-agents (Rastignac, Vautrin, …) on demand via `podman run`.
 
-Stop everything with `./stop.sh`. Honoré's data persists in **`./data/`** on the host
-(palace, sessions, ChromaDB, Redis) — see [Data & Persistence](#data--persistence).
+Stop everything with `./stop.sh`. All runtime state lives under **`./build/`** on the
+host (git-ignored, so the repo stays source-only) — see [Data & Persistence](#data--persistence).
 
 ### Standalone — `./action` CLI
 
@@ -237,22 +237,71 @@ DEEPSEEK_API_KEY=sk-...
 GEMINI_API_KEY=AI...
 ```
 
+**Capacity controls** (set on the `honoré` service in `compose.yaml`): the cap is
+**token-based**, because under a Claude subscription (OAuth) dollar cost is effectively
+meaningless — tokens are what you actually spend.
+
+| Env | Default | Meaning |
+| --- | --- | --- |
+| `N184_DAILY_TOKEN_CAP` | `20000000` | Cumulative tokens/day (persisted in Redis, survives restarts). Queries are refused past it. |
+| `N184_MAX_RESTARTS` / `N184_RESTART_WINDOW_SEC` | `5` / `600` | Restart breaker — after N restarts in the window Honoré comes up idle and waits for `/resume`, instead of crash-looping through your capacity. |
+
+Usage is metered for **Claude *and* DeepSeek/Ollama** agents.
+
+**Local Ollama** (or any OpenAI-compatible endpoint): declare it in
+`providers/registry.local.yaml` (git-ignored). Agents reach the host's Ollama at
+`http://host.containers.internal:11434/v1` — no API key needed. Honoré picks the
+provider/model per sub-agent dispatch, so the swarm is genuinely multi-model.
+
 ---
 
 ## Data & Persistence
 
-Honoré's state lives in **`./data/`** on the host (the compose services bind-mount it;
-this replaces the old `./nanoclaw` directory):
+All runtime state lives under **`./build/`** on the host — git-ignored, so the repo
+stays source-only and you never commit "everyone's N184." The compose services
+bind-mount it (this replaces the old single-container `./nanoclaw` layout):
 
 | Path | Contents |
 | --- | --- |
-| `./data/palace/` | Memory Palace — findings, lessons learned, the `/sorrow` pot still |
-| `./data/sessions/` | Claude Code session continuity for Honoré |
-| `./data/chroma/` | ChromaDB vector store (semantic search over the palace) |
-| `./data/redis/` | Redis state — IPC queues, budget counters, restart-breaker state |
+| `build/data/palace/` | Memory Palace — findings, lessons, and the `/sorrow` **pot still** |
+| `build/data/sessions/` | Claude Code session continuity for Honoré |
+| `build/data/chroma/` | ChromaDB vector store (semantic search over the palace) |
+| `build/data/redis/` | Redis — IPC queues, token-budget counters, restart-breaker state |
+| `build/workspace/` | Shared workspace: target repos the whole swarm (and you) analyze |
+| `build/logs/` | Controller + service logs |
 
 Because it's a plain host directory, it survives `./stop.sh` / `compose down` **and** a
-`podman system reset`, and you back it up by copying `./data/`. It's `.gitignore`d.
+`podman system reset`. Back it up by copying `./build/`.
+
+> ⚠️ `./build` holds the pot still. Don't `rm -rf ./build` without first running
+> `./export.sh --to-git` to preserve the distilled lessons.
+
+---
+
+## Reincarnation Memory — `/sorrow`, `/joy`, and the Pot Still
+
+Honoré is a long-lived agent, but his Claude context eventually drifts and the operator
+reinstantiates him. The **pot still** (`build/data/palace/potstill.md`) carries his
+hard-won judgment across those reincarnations so a successor doesn't re-learn or
+re-obsess (e.g. a past Honoré once wasted a scan checking impossible 16 EiB disk limits —
+that became a banked lesson).
+
+- **`/sorrow`** (operator command, via your channel) — Honoré distills his validated
+  lessons (post-mortem dispositions, confirmed false-positive shapes, craft rules) and
+  merges them into the pot still. Run it *before* a planned reinstantiation. It never
+  fires on its own.
+- **`/joy`** (operator command) — a freshly reincarnated Honoré reads the pot still and
+  adopts every lesson as a standing constraint. It's **idempotent**: a boot-id check
+  against `build/data/palace/lifecycle.json` stops it re-firing on every message.
+- **`./export.sh`** — share or back up the distilled lessons:
+  - `./export.sh` — print the pot still (+ lifecycle ledger) to stdout
+  - `./export.sh --to-git` — copy the lessons into the **tracked** `potstill.md` and
+    stage it, so you can `git commit` to version and share lessons across deployments
+  - `./export.sh --file` — write a timestamped copy; `--path` prints the location
+
+Continuity is protected in code: a query error no longer kills the agent (it stays alive
+with its session preserved and persisted on init), so Honoré is **not reincarnated
+involuntarily** — only when you deliberately reinstantiate him.
 
 ---
 
@@ -271,27 +320,29 @@ N184/
 │       ├── index.ts         #   Core query loop (Redis + file IPC)
 │       ├── redis-ipc.ts     #   Redis pub/sub adapter
 │       ├── ipc-mcp-stdio.ts #   MCP tools (send_message, schedule_task)
-│       ├── honore-entrypoint.ts   # Persistent mode for Honoré
-│       └── vautrin-entrypoint.ts  # Queue consumer for Vautrin
-├── controller/              # Python control plane
+│       ├── honore-entrypoint.ts   # Persistent Honoré loop + lifecycle boot marker
+│       ├── vautrin-entrypoint.ts  # Queue consumer for Vautrin
+│       ├── openai-entrypoint.ts   # OpenAI-compat runtime (DeepSeek, Ollama)
+│       └── budget-guard.ts        #   Token budget cap + restart breaker (Redis-backed)
+├── controller/              # Python control plane (runs on the host)
 │   ├── main.py              #   Asyncio entry point
 │   ├── channel.py           #   Channel protocol + router
-│   ├── telegram_bot.py      #   Telegram channel
+│   ├── telegram_bot.py      #   Telegram channel (+ /sorrow, /joy commands)
 │   ├── slack_channel.py     #   Slack channel (Socket Mode)
 │   ├── email_channel.py     #   Email channel (IMAP poll + SMTP)
-│   ├── redis_bridge.py      #   Task watcher + message relay
-│   └── job_manager.py       #   k8s Job creation
+│   ├── redis_bridge.py      #   Task watcher + message relay + sub-agent report-back
+│   ├── podman_runner.py     #   Sub-agent dispatch via `podman run` (the live backend)
+│   ├── providers.py         #   AI provider registry resolver
+│   └── job_manager.py       #   Legacy k8s Job dispatch (superseded by podman_runner)
 ├── container/               # Agent container image
 │   ├── Dockerfile           #   node:22 + Python + chromadb + Claude Code
 │   ├── entrypoint.sh        #   Standard stdin entry
 │   ├── k8s-entrypoint.sh    #   k8s Job entry (fetches from Redis)
 │   └── build.sh             #   Build + import to k3d
-├── k8s/                     # Kubernetes manifests (Kustomize)
-│   ├── base/                #   Namespace, RBAC, Redis, ChromaDB,
-│   │                        #   Controller, Honoré, KEDA Vautrin
-│   ├── overlays/local/      #   macOS (k3d) patches
-│   ├── overlays/production/ #   Linux (k3s) patches
-│   └── setup.sh             #   One-command deploy
+├── k8s/                     # Legacy Kubernetes manifests (superseded by compose)
+│   ├── base/                #   Namespace, RBAC, Redis, ChromaDB, …
+│   ├── overlays/            #   local (k3d) / production (k3s) patches
+│   └── setup.sh             #   Old k8s deploy (kept for reference)
 ├── souls/                   # Agent persona definitions
 │   ├── claude-honore.md     #   Lead orchestrator
 │   ├── claude-vautrin.md    #   Vulnerability hunter
@@ -303,6 +354,12 @@ N184/
 │                            #   via the n184-refs ConfigMap)
 │       └── malloc-hardening.md  # OpenBSD malloc reference for Fil-de-Soie
 ├── action                   # Standalone CLI: ./action --pull-the-thread ...
+├── start.sh / stop.sh        # Bring the swarm up / down (podman + compose)
+├── compose.yaml             # Podman-compose: Honoré + Redis + ChromaDB
+├── export.sh                # Export pot-still lessons (stdout / --to-git / --file)
+├── providers/               # AI provider registry (registry.yaml + local override)
+├── potstill.md              # Shared distilled lessons (committed via export.sh --to-git)
+├── build/                   # Runtime state, git-ignored (data, workspace, logs)
 ├── SCOREBOARD.md            # Verified bugs found by N184
 ├── ROADMAP.md               # Feature roadmap
 ├── FAQ.md                   # Frequently asked questions

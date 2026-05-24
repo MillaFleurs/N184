@@ -715,6 +715,16 @@ async function runQuery(
       if (message.type === 'system' && message.subtype === 'init') {
         newSessionId = message.session_id;
         log(`Session initialized: ${newSessionId}`);
+        // Persist the session id NOW, not just at query end — if the query
+        // later errors, the next message must still resume this session
+        // rather than start a fresh one (which would reincarnate Honoré).
+        if (redisIpc && newSessionId && contextMode === 'group') {
+          try {
+            await redisIpc.setSessionId(AGENT_NAME, newSessionId);
+          } catch {
+            /* best-effort; end-of-query persist will retry */
+          }
+        }
       }
 
       if (message.type === 'result') {
@@ -745,10 +755,11 @@ async function runQuery(
         }
         // Deliver the reply over Redis. The controller relays n184:messages —
         // it does NOT read the container's stdout — so the agent's result must
-        // be published there or it never reaches the operator. Only the main
-        // agent (Honoré) talks to the operator's chat; sub-agents report back
-        // to Honoré, not the user, so they don't auto-publish.
-        if (redisIpc && containerInput.isMain && textResult && containerInput.chatJid) {
+        // be published there or it never reaches anyone. Honoré (isMain) sends
+        // to the operator's chat; sub-agents send to "agent:honore" (set by the
+        // controller), which the controller routes into Honoré's input for
+        // aggregation. Publish whenever a chatJid is set.
+        if (redisIpc && textResult && containerInput.chatJid) {
           try {
             await redisIpc.sendMessage({
               chatJid: containerInput.chatJid,
@@ -868,69 +879,69 @@ async function main(): Promise<void> {
     prompt = `[SCHEDULED TASK]\n\nScript output:\n${JSON.stringify(scriptResult.data, null, 2)}\n\nInstructions:\n${containerInput.prompt}`;
   }
 
-  // Query loop
+  // Query loop. A query error must NOT exit the process: honore-entrypoint
+  // would respawn a fresh agent and — if the session wasn't persisted before
+  // the error — reincarnate Honoré involuntarily (the "puttered out and
+  // reinstantiated" bug). So we catch per-query, surface the error, and stay
+  // alive with the session preserved.
   let resumeAt: string | undefined;
   try {
     while (true) {
-      log(`Starting query (session: ${sessionId || 'new'})...`);
-
-      const queryResult = await runQuery(
-        prompt,
-        sessionId,
-        mcpServerPath,
-        containerInput,
-        sdkEnv,
-        redisIpc,
-        resumeAt,
-      );
-      if (queryResult.newSessionId) {
-        sessionId = queryResult.newSessionId;
+      let closed = false;
+      try {
+        log(`Starting query (session: ${sessionId || 'new'})...`);
+        const queryResult = await runQuery(
+          prompt,
+          sessionId,
+          mcpServerPath,
+          containerInput,
+          sdkEnv,
+          redisIpc,
+          resumeAt,
+        );
+        if (queryResult.newSessionId) {
+          sessionId = queryResult.newSessionId;
+        }
+        if (queryResult.lastAssistantUuid) {
+          resumeAt = queryResult.lastAssistantUuid;
+        }
+        if (queryResult.closedDuringQuery) {
+          log('Close signal consumed during query, exiting');
+          closed = true;
+        } else {
+          writeOutput({ status: 'success', result: null, newSessionId: sessionId });
+        }
+      } catch (err) {
+        // Surface the error but keep the process (and the session) alive.
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        log(`Query error (staying alive to preserve continuity): ${errorMessage}`);
+        writeOutput({
+          status: 'error',
+          result: null,
+          newSessionId: sessionId,
+          error: errorMessage,
+        });
       }
-      if (queryResult.lastAssistantUuid) {
-        resumeAt = queryResult.lastAssistantUuid;
-      }
-
-      if (queryResult.closedDuringQuery) {
-        log('Close signal consumed during query, exiting');
-        break;
-      }
-
-      writeOutput({ status: 'success', result: null, newSessionId: sessionId });
+      if (closed) break;
 
       log('Query ended, waiting for next message...');
 
       // Wait for next message
+      let nextPrompt: string | null;
       if (IPC_BACKEND === 'redis' && redisIpc) {
-        // Redis: wait for next message on input channel
         const gen = redisIpc.subscribe();
         const { value, done } = await gen.next();
-        if (done || value === null) {
-          log('Close signal received, exiting');
-          break;
-        }
-        prompt = value;
+        nextPrompt = done ? null : value;
       } else {
-        // File: poll for next IPC message
-        const nextMessage = await waitForIpcMessage();
-        if (nextMessage === null) {
-          log('Close sentinel received, exiting');
-          break;
-        }
-        prompt = nextMessage;
+        nextPrompt = await waitForIpcMessage();
       }
-
+      if (nextPrompt === null) {
+        log('Close received, exiting');
+        break;
+      }
+      prompt = nextPrompt;
       log(`Got new message (${prompt.length} chars), starting new query`);
     }
-  } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : String(err);
-    log(`Agent error: ${errorMessage}`);
-    writeOutput({
-      status: 'error',
-      result: null,
-      newSessionId: sessionId,
-      error: errorMessage,
-    });
-    process.exit(1);
   } finally {
     if (redisIpc) {
       await redisIpc.close();

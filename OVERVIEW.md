@@ -42,7 +42,9 @@ N184/
 ├── providers/             # AI provider registry (anthropic, openai, deepseek, ...)
 ├── container/             # Agent container image (Dockerfile + build.sh)
 ├── k8s/                   # Legacy Kubernetes manifests (superseded by compose)
-├── data/                  # Honoré's host data: palace, sessions, etc. (gitignored)
+├── export.sh              # Export pot-still lessons (stdout / --to-git / --file)
+├── potstill.md            # Shared distilled lessons (committed via export.sh --to-git)
+├── build/                 # Runtime state, gitignored: data/, workspace/, logs/
 ├── __pycache__/           # Python bytecode cache (auto-generated)
 ├── README.md              # Project introduction and quick start
 ├── OVERVIEW.md            # This file
@@ -263,8 +265,8 @@ the old single-container `init.sh`/NanoClaw bootstrap.
 5. Starts exactly one **controller** (host process) — a duplicate would fight
    over the Telegram `getUpdates` poll and both would fail
 
-**`stop.sh`** stops the controller and runs `podman compose down` (the `./data/`
-directory is preserved).
+**`stop.sh`** stops the controller and runs `podman compose down` (the `./build/`
+runtime — pot still included — is preserved).
 
 ### The two layers
 
@@ -276,17 +278,32 @@ directory is preserved).
   podman_runner.py`) — replacing the k8s Jobs + KEDA of the legacy `k8s/` path.
   It runs on the host because host-side podman is the reliable path on macOS.
 
-## `data/` -- Honoré's Persistent State
+## `build/` -- Runtime State + Reincarnation Memory
 
-A host directory bind-mounted into the containers (replaces the old `build/`
-runtime artifacts):
+All runtime state lives under `build/` (gitignored), so the repo stays source-only and
+clones never collect "everyone's N184." Bind-mounted into the containers:
 
-- `data/palace/` -- Memory Palace (findings, lessons, the `/sorrow` pot still)
-- `data/sessions/` -- Claude Code session continuity
-- `data/chroma/`, `data/redis/` -- vector store + runtime state
+- `build/data/palace/` -- Memory Palace (findings, lessons, the `/sorrow` pot still)
+- `build/data/sessions/` -- Claude Code session continuity for Honoré
+- `build/data/chroma/`, `build/data/redis/` -- vector store + runtime state
+- `build/workspace/` -- shared workspace: the target repo the whole swarm analyzes
+- `build/logs/` -- controller + service logs
 
-Because it is a plain host folder it survives `compose down` and even a
-`podman system reset`, and you back it up by copying `data/`. It is gitignored.
+A plain host folder: survives `compose down` and a `podman system reset`; back it up by
+copying `build/`. (Don't `rm -rf build/` without `./export.sh --to-git` first.)
+
+**Reincarnation memory.** Honoré's distilled judgment crosses reinstantiations via the
+**pot still** (`build/data/palace/potstill.md`):
+
+- `/sorrow` (operator command) -- distil validated lessons into the pot still before a
+  planned reinstantiation. Explicit-only; never autonomous.
+- `/joy` (operator command) -- a fresh Honoré imports the pot still as standing
+  constraints. Idempotent via `build/data/palace/lifecycle.json` (a boot-id ledger).
+- `./export.sh --to-git` -- copy the lessons into the tracked `potstill.md` and stage
+  it, so distilled wisdom can be committed and shared across deployments.
+
+Continuity is protected in code: a query error no longer exits the agent (session
+preserved + persisted on init), so Honoré is not reincarnated involuntarily.
 
 ---
 
@@ -357,7 +374,7 @@ Human (HIL) <--Telegram--> Controller (host process)
                         different AI models)
                                    |
                                    v
-                       Memory Palace (./data/palace)
+                  Memory Palace (./build/data/palace)
                            /              \
                      SQLite DB         ChromaDB
                   (relationships)    (7 halls of
