@@ -187,13 +187,51 @@ class RedisBridge:
                 model or "<default>",
             )
         else:
-            # Generic task — schedule via target JID
             target_jid = data.get("targetJid", "")
-            logger.info(
-                "Generic scheduled task for %s: %s",
-                target_jid,
-                prompt[:80],
-            )
+            # A schedule_task that named a provider/model — or named an agent we
+            # don't recognise — was meant to spawn a swarm sub-agent, but none of
+            # the dispatchable agents matched, so nothing ran. This used to be
+            # swallowed with a single info log, which looked exactly like a
+            # "provider routing" bug: a DeepSeek/OpenAI dispatch would vanish
+            # because the agent name was unrecognised (or omitted). Surface it to
+            # Honoré instead of dropping silently.
+            looks_like_swarm_dispatch = bool(target_agent or provider or model)
+            if looks_like_swarm_dispatch:
+                known = "vautrin, rastignac, bianchon, lousteau, fil-de-soie"
+                logger.warning(
+                    "Dropped schedule_task: target_agent=%r not dispatchable "
+                    "(provider=%s model=%s)",
+                    target_agent,
+                    provider or "<default>",
+                    model or "<default>",
+                )
+                notice = (
+                    f"[dispatch dropped] No sub-agent was spawned — target_agent="
+                    f"{target_agent!r} is not one of: {known}. The provider field "
+                    f"({provider or '<default>'}) only takes effect when "
+                    f"target_agent is a dispatchable swarm agent. Re-issue "
+                    f'schedule_task with e.g. target_agent="vautrin", '
+                    f'provider="deepseek".'
+                )
+                try:
+                    await self.publish_to_agent(
+                        "honore",
+                        {
+                            "type": "message",
+                            "text": notice,
+                            "sender": "controller",
+                            "chat_jid": "agent:honore",
+                        },
+                    )
+                except Exception:
+                    logger.exception("Failed to notify Honoré of dropped dispatch")
+            else:
+                # Legacy generic scheduled task (target JID, no swarm agent).
+                logger.info(
+                    "Generic scheduled task for %s: %s",
+                    target_jid,
+                    prompt[:80],
+                )
 
     # ── Message Relay ─────────────────────────────────────────────────
 

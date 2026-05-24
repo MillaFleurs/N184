@@ -12,23 +12,24 @@
  *   1. Read ContainerInput (same shape as the claude-sdk runtime).
  *   2. Read the soul (CLAUDE.md) and use it as the system prompt.
  *   3. Loop chat.completions with tool calls until the model is done.
- *   4. Expose two tools that mirror the MCP server: send_message and
- *      schedule_task. They publish to the same Redis channels so Honoré
- *      and the controller can't tell whether the message came from a
- *      Claude pod or an OpenAI/DeepSeek pod.
+ *   4. Expose tools that mirror the MCP server (send_message, schedule_task)
+ *      PLUS read-only code-scanning tools (list_dir, read_file, grep,
+ *      find_files) so a non-Anthropic Vautrin can actually navigate and
+ *      read the target repo at /workspace/shared — the openai-compat
+ *      equivalent of the claude-sdk runtime's Read/Grep. They publish to the
+ *      same Redis channels so Honoré can't tell a Claude pod from a
+ *      DeepSeek/Ollama pod.
  *
  * What it does NOT do (yet, can be extended):
- *   - Filesystem tool use (Bash/Read/Write). Sub-agents that only need
- *     to chat and dispatch (e.g., a DeepSeek Vautrin reading a code map
- *     and emitting findings) work fine without these.
+ *   - Write/Bash (the scan tools are read-only by design — a Vautrin
+ *     analyzes and reports, it does not mutate the target).
  *   - Session resumption.
  *   - The full claude-agent-sdk MCP tool surface.
- *
- * If the model the registry resolves to needs filesystem access, dispatch
- * via the claude-sdk runtime instead — or extend this file.
  */
 
 import fs from 'fs';
+import path from 'path';
+import { execFileSync } from 'child_process';
 import OpenAI from 'openai';
 import { RedisIPC } from './redis-ipc.js';
 import {
@@ -132,6 +133,107 @@ async function isSwarmKilled(redis: RedisIPC): Promise<string | null> {
   return redis.getValue(SWARM_KILL_KEY);
 }
 
+// ── Read-only filesystem tools for code scanning ─────────────────────
+//
+// Give a non-Anthropic agent the ability to actually navigate and read the
+// target repo (mounted at /workspace/shared). The claude-sdk runtime has
+// Read/Grep/Bash; this is the openai-compat equivalent — read-only and
+// sandboxed to /workspace so a model can't wander outside the workspace.
+
+const WORKSPACE_ROOT = '/workspace';
+const SCAN_BASE = '/workspace/shared';
+
+function resolveSafe(p: string): string {
+  const abs = path.isAbsolute(p) ? path.resolve(p) : path.resolve(SCAN_BASE, p || '.');
+  if (abs !== WORKSPACE_ROOT && !abs.startsWith(WORKSPACE_ROOT + path.sep)) {
+    throw new Error(`path "${p}" escapes the workspace sandbox`);
+  }
+  return abs;
+}
+
+function relToBase(p: string): string {
+  return p.startsWith(SCAN_BASE + '/') ? p.slice(SCAN_BASE.length + 1) : p;
+}
+
+function runCapture(cmd: string, args: string[]): string {
+  try {
+    return execFileSync(cmd, args, { encoding: 'utf-8', maxBuffer: 16 * 1024 * 1024 });
+  } catch (e) {
+    const err = e as { status?: number; stdout?: string; message?: string };
+    if (err.status === 1 && !err.stdout) return ''; // grep/find: no matches
+    if (err.stdout) return err.stdout; // partial output (e.g. hit a perms error)
+    throw new Error(err.message || String(e));
+  }
+}
+
+function toolListDir(p: string): string {
+  const dir = resolveSafe(p);
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const shown = entries
+    .slice(0, 500)
+    .map((e) => `${e.isDirectory() ? 'd' : '-'} ${e.name}`)
+    .sort();
+  let out = `${relToBase(dir) || '.'}/  (${entries.length} entries)\n${shown.join('\n')}`;
+  if (entries.length > 500) out += `\n... (${entries.length - 500} more)`;
+  return out;
+}
+
+function toolReadFile(p: string, offset = 0, limit = 400): string {
+  const file = resolveSafe(p);
+  const stat = fs.statSync(file);
+  if (stat.isDirectory()) return `error: "${p}" is a directory — use list_dir`;
+  const lines = fs.readFileSync(file, 'utf-8').split('\n');
+  const start = Math.max(0, offset);
+  const end = Math.min(lines.length, start + Math.max(1, limit));
+  const body = lines
+    .slice(start, end)
+    .map((l, i) => `${start + i + 1}\t${l}`)
+    .join('\n');
+  let out = body || '(empty)';
+  if (end < lines.length) {
+    out += `\n... (${lines.length - end} more lines — read_file offset=${end} to continue)`;
+  }
+  return out;
+}
+
+function toolGrep(pattern: string, p = '.', glob?: string, maxResults = 100): string {
+  const base = resolveSafe(p);
+  const args = ['-rnI', '--color=never', '--exclude-dir=node_modules', '--exclude-dir=.git'];
+  if (glob) args.push(`--include=${glob}`);
+  args.push('-e', pattern, base);
+  let out: string;
+  try {
+    out = runCapture('grep', args);
+  } catch (e) {
+    return `grep error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  const lines = out.split('\n').filter(Boolean);
+  if (lines.length === 0) return `no matches for /${pattern}/`;
+  let res = lines.slice(0, maxResults).map((l) => relToBase(l)).join('\n');
+  if (lines.length > maxResults) {
+    res += `\n... (${lines.length - maxResults} more — narrow the pattern or pass a glob)`;
+  }
+  return res;
+}
+
+function toolFindFiles(name: string, p = '.', maxResults = 200): string {
+  const base = resolveSafe(p);
+  let out: string;
+  try {
+    out = runCapture('find', [
+      base, '-type', 'f', '-name', name,
+      '-not', '-path', '*/node_modules/*', '-not', '-path', '*/.git/*',
+    ]);
+  } catch (e) {
+    return `find error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  const lines = out.split('\n').filter(Boolean).map((l) => relToBase(l));
+  if (lines.length === 0) return `no files matching "${name}"`;
+  let res = lines.slice(0, maxResults).join('\n');
+  if (lines.length > maxResults) res += `\n... (${lines.length - maxResults} more)`;
+  return res;
+}
+
 // ── Tool definitions visible to the model ────────────────────────────
 //
 // Mirrors the MCP server tools (send_message, schedule_task). We keep the
@@ -179,6 +281,72 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           },
         },
         required: ['target_agent', 'prompt'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_dir',
+      description:
+        'List files and subdirectories of the target repo. Paths are relative to the repo root (/workspace/shared) unless absolute under /workspace. Start here to explore the codebase.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Directory path (default: repo root)' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_file',
+      description:
+        'Read a source file (returned line-numbered). Use offset/limit to page through large files. Paths are relative to the repo root (/workspace/shared).',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'File path' },
+          offset: { type: 'integer', description: '0-based start line (default 0)' },
+          limit: { type: 'integer', description: 'Max lines to return (default 400)' },
+        },
+        required: ['path'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'grep',
+      description:
+        'Search file contents with a regex, recursively (skips node_modules/.git). Returns file:line:match. Use this to locate dangerous sinks, calls, and patterns in the target repo.',
+      parameters: {
+        type: 'object',
+        properties: {
+          pattern: { type: 'string', description: 'Search regex (grep -e semantics)' },
+          path: { type: 'string', description: 'Directory or file to search (default: repo root)' },
+          glob: { type: 'string', description: 'Only search files matching this glob, e.g. "*.ts"' },
+          max_results: { type: 'integer', description: 'Max matching lines (default 100)' },
+        },
+        required: ['pattern'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'find_files',
+      description:
+        'Find files by name/glob, recursively (skips node_modules/.git). e.g. name="*.config.js".',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Filename glob, e.g. "*.ts"' },
+          path: { type: 'string', description: 'Directory to search (default: repo root)' },
+          max_results: { type: 'integer', description: 'Max files (default 200)' },
+        },
+        required: ['name'],
       },
     },
   },
@@ -236,6 +404,43 @@ async function handleToolCall(
     return `task dispatched to ${args.target_agent}`;
   }
 
+  if (fnName === 'list_dir') {
+    try {
+      return toolListDir(String(args.path ?? '.'));
+    } catch (e) {
+      return `error: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+
+  if (fnName === 'read_file') {
+    try {
+      return toolReadFile(
+        String(args.path ?? ''),
+        typeof args.offset === 'number' ? args.offset : 0,
+        typeof args.limit === 'number' ? args.limit : 400,
+      );
+    } catch (e) {
+      return `error: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+
+  if (fnName === 'grep') {
+    return toolGrep(
+      String(args.pattern ?? ''),
+      typeof args.path === 'string' ? args.path : '.',
+      typeof args.glob === 'string' ? args.glob : undefined,
+      typeof args.max_results === 'number' ? args.max_results : 100,
+    );
+  }
+
+  if (fnName === 'find_files') {
+    return toolFindFiles(
+      String(args.name ?? '*'),
+      typeof args.path === 'string' ? args.path : '.',
+      typeof args.max_results === 'number' ? args.max_results : 200,
+    );
+  }
+
   return `error: unknown tool ${fnName}`;
 }
 
@@ -259,6 +464,16 @@ async function main(): Promise<void> {
   const soul = readSoul();
   const systemMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
   if (soul) systemMessages.push({ role: 'system', content: soul });
+  systemMessages.push({
+    role: 'system',
+    content:
+      'You have read-only access to the target repository at /workspace/shared. ' +
+      'Use the tools list_dir, read_file, grep, and find_files to investigate the ' +
+      'ACTUAL code before drawing any conclusion — do not invent file paths, line ' +
+      'numbers, or vulnerabilities. When you have a concrete, evidence-backed finding, ' +
+      'call send_message with it and cite file:line. If the evidence is not there, ' +
+      'say so plainly rather than speculating.',
+  });
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     ...systemMessages,
@@ -328,6 +543,7 @@ async function main(): Promise<void> {
     for (const call of assistantMsg.tool_calls) {
       // Type narrowing: only function tool calls have .function on them.
       if (call.type !== 'function') continue;
+      log(`tool ${call.function.name}(${(call.function.arguments || '').slice(0, 160)})`);
       const result = await handleToolCall(redis, containerInput, call);
       messages.push({ role: 'tool', tool_call_id: call.id, content: result });
     }
