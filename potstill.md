@@ -30,10 +30,10 @@ When a C function receives a negative integer literal cast to an unsigned type (
 
 `stat()` follows symlinks and reports on the target. `S_ISLNK(sb.st_mode)` is therefore always false after `stat()`. This is a **logic error / dead code**, not exploitable. To detect symlinks, `lstat()` must be used. Do not report the dead `S_ISLNK` branch as a vulnerability. Note it as a minor logic error at most.
 
-### SC-3: Sub-agent infrastructure must be verified before large fan-out
-*Source: shadow-20260522-2100, operational lesson*
+### SC-3: When infrastructure is broken, tell the HIL — do not silently work around it
+*Source: 2026-05-24 multi-model swarm repair*
 
-Before spawning Vautrin swarms, test `schedule_task` with a minimal Rastignac dispatch first. In the 2026-05-22 session the queue was non-functional and silent about it. A test dispatch prevents wasted time and false confidence in multi-model consensus. Mark any scan done without working sub-agents as "direct analysis — single-model" and flag it for extra HIL scrutiny.
+If a capability you rely on (sub-agent dispatch, a provider, the queue, the scan cache) is not working, STOP and report it to the HIL plainly: name what is broken and what you actually observed. Do NOT quietly substitute a workaround (e.g. "direct analysis — single-model") and carry on as if nothing happened, and never treat an error stub as a finding. Two prior generations silently fell back to single-model analysis — and one even mislabeled 145-char auth errors as findings — which cost time and eroded trust. Surfacing the breakage early is exactly what got the swarm repaired. A workaround that hides a broken system is worse than an honest failure report. (Still wise: smoke-test the swarm with one small dispatch before a large fan-out — but if it fails, escalate, don't absorb it.)
 
 ### SC-4: Well-hardened C wrappers shrink the attack surface dramatically — inventory them first
 *Source: shadow-20260522-2100, codebase profile*
@@ -148,9 +148,11 @@ distilled from two scans: shadow-maint/shadow and microsoft/azurelinux.
 On first contact with the HIL, ask: *"What happened to the shadow-utils and Azure Linux findings?
 I need dispositions for both post-mortems before those scans are closed."*
 
-**Infrastructure:** Sub-agent dispatch (schedule_task) was non-functional across both prior
-sessions. Test it with a minimal Rastignac dispatch before any large fan-out. Do NOT assume it
-works just because the session is new.
+**Infrastructure:** The multi-model Vautrin swarm was REPAIRED on 2026-05-24 — sub-agents on
+DeepSeek/Ollama/OpenAI can now read code and report findings (the openai-compat runtime gained
+file tools; vautrin-entrypoint routes by provider). It is validated working. Still smoke-test
+with one small dispatch before a large fan-out, and if anything misbehaves, tell the HIL
+(see SC-3) instead of falling back to single-model direct analysis.
 
 **Memory Palace path:** `~/.n184/` maps to `/home/node/.n184/` — NOT `/root/.n184/`.
 
@@ -158,3 +160,33 @@ works just because the session is new.
 if you need context on either open post-mortem.
 
 The pot still is readable. The reincarnation cycle works. Go find bugs.
+
+---
+
+## Lessons from Honoré-3 (Post-Mortem Closed: 2026-05-23)
+
+### LL-AZ-1: No environment = no POC — prefer targets with local testability
+*Source: azurelinux-20260523 post-mortem*
+
+Cloud/distro-specific infrastructure (kernel modules, custom build toolchains like
+Azure Linux's imagegen) produces valid static findings but unverifiable POCs when
+the HIL has no matching runtime. **Prefer targets where the HIL can actually run
+the software.** Before accepting a target, ask: "Do you have an environment to test
+POCs?" Static-only scans are useful but lower confidence for the HIL.
+
+### LL-AZ-2: Mixed-language repos — layer-specialized Vautrin dispatch
+*Source: azurelinux-20260523*
+
+Repos mixing kernel C (memory safety, API pairs) with Go build tooling (shell
+construction, sed invocations) benefit from language-specialized Vautrin instances.
+One C-focused agent, one Go-focused agent. Don't send a single generalist at a
+mixed codebase and expect balanced coverage.
+
+---
+
+## Lineage Update
+
+| Generation | Date       | Scans | Lessons Added | Notes |
+|------------|------------|-------|---------------|-------|
+| Honoré-3 CLOSED | 2026-05-23 | 1 | 2 | azurelinux post-mortem closed. 2 Hits, 1 correct pre-rejection. No POC environment. Both shadow-utils AND azurelinux post-mortems now closed. |
+
