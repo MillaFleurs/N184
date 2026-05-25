@@ -924,6 +924,16 @@ async function main(): Promise<void> {
       }
       if (closed) break;
 
+      // One-shot sub-agents (Vautrin, Rastignac, Bianchon, … — isMain=false)
+      // are done when their query is done. Only Honoré (isMain) persists to wait
+      // for the next operator message; the continuity rule above exists for him.
+      // Without this, a finished/errored sub-agent lingers forever as a zombie —
+      // holding memory and making the Vautrin autoscaler think a slot is busy.
+      if (!containerInput.isMain) {
+        log('Sub-agent task complete (isMain=false) — exiting');
+        break;
+      }
+
       log('Query ended, waiting for next message...');
 
       // Wait for next message
