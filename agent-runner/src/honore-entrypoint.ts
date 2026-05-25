@@ -44,16 +44,46 @@ interface ContainerInput {
   contextMode?: 'group' | 'isolated' | 'recovery';
 }
 
+function readBoard(): string {
+  try {
+    return fs.readFileSync('/home/node/.n184/swarm-state.md', 'utf-8').trim();
+  } catch {
+    return '';
+  }
+}
+
+function withBoard(text: string): string {
+  const board = readBoard();
+  if (!board) return text;
+  return `${text}
+
+=== ~/.n184/swarm-state.md — the controller's durable, authoritative swarm board ===
+${board}
+=== end board ===`;
+}
+
 function recoveryPrompt(text: string): string {
-  return `[RESTART RECOVERY MODE]
+  return withBoard(`[RESTART RECOVERY MODE]
 
 Honoré restarted with a persisted session present. Do not dispatch new agents yet.
-First inspect current swarm state, queued work, processing work, and recent scan
-artifacts. Report what is running or stranded, what would be needed to continue,
-and ask the operator before spawning or resuming any sub-agent work.
+First inspect current swarm state (the board below), queued work, processing work, and
+recent scan artifacts. Report what is running or stranded, what would be needed to
+continue, and ask the operator before spawning or resuming any sub-agent work.
 
 Operator message:
-${text}`;
+${text}`);
+}
+
+function sessionResetPrompt(text: string): string {
+  return withBoard(`[SESSION RESET RECOVERY]
+
+Your previous session ended unexpectedly (most likely a query timeout) and you are now on a
+FRESH, EMPTY session — your in-flight tracking is gone. Recover your state from the durable
+swarm board below before responding. Do NOT tell the operator you have no memory, and do NOT
+re-dispatch agents already listed on the board; call swarm_status to confirm live counts first.
+
+Operator message:
+${text}`);
 }
 
 async function main(): Promise<void> {
@@ -120,6 +150,11 @@ async function main(): Promise<void> {
     }
   }
 
+  // Armed when index.js had to start a fresh session last cycle (an in-life reset):
+  // the next message gets the durable board injected so Honoré re-orients instead of
+  // waking up amnesiac.
+  let injectResetNext = false;
+
   // Wait for first message, then pipe as ContainerInput to main runner
   for await (const msg of redisIpc.subscribe()) {
     if (msg === null) {
@@ -156,8 +191,19 @@ async function main(): Promise<void> {
       ? undefined
       : (await redisIpc.getSessionId(AGENT_NAME)) || undefined;
 
+    let promptText: string;
+    if (recoveryPending) {
+      promptText = recoveryPrompt(msg);
+    } else if (injectResetNext) {
+      log('Session reset detected last cycle — injecting durable board for recovery');
+      promptText = sessionResetPrompt(msg);
+      injectResetNext = false;
+    } else {
+      promptText = msg;
+    }
+
     const containerInput: ContainerInput = {
-      prompt: recoveryPending ? recoveryPrompt(msg) : msg,
+      prompt: promptText,
       sessionId: activeSessionId,
       groupFolder: GROUP_FOLDER,
       chatJid: redisIpc.lastChatJid || CHAT_JID,
@@ -200,6 +246,20 @@ async function main(): Promise<void> {
     } catch (err) {
       log(`Query error: ${err instanceof Error ? err.message : String(err)}`);
       // Don't exit — wait for next message
+    }
+
+    // Detect an in-life session reset: if index.js could not resume the session it
+    // was handed and started a fresh one, the persisted id will have changed. Arm a
+    // board-recovery injection for the NEXT message so Honoré re-orients instead of
+    // waking up amnesiac (the "forgot what he was doing" failure).
+    try {
+      const afterId = (await redisIpc.getSessionId(AGENT_NAME)) || undefined;
+      if (activeSessionId && afterId && afterId !== activeSessionId) {
+        log(`Session reset detected (${activeSessionId} → ${afterId}); board recovery armed`);
+        injectResetNext = true;
+      }
+    } catch {
+      /* ignore */
     }
   }
 
