@@ -910,6 +910,16 @@ async function main(): Promise<void> {
           closed = true;
         } else {
           writeOutput({ status: 'success', result: null, newSessionId: sessionId });
+          // Recovery is a ONE-SHOT gate. Once the first inspection query
+          // succeeds, revert to group mode so the persistent agent (Honoré) can
+          // dispatch on subsequent messages. Without this, isMain keeps the
+          // process alive reusing the initial 'recovery' contextMode — which
+          // blocks schedule_task forever, trapping the session on every restart
+          // until a human intervenes.
+          if (getContextMode(containerInput) === 'recovery') {
+            log('Recovery inspection complete — reverting to group mode for subsequent messages');
+            containerInput.contextMode = 'group';
+          }
         }
       } catch (err) {
         // Surface the error but keep the process (and the session) alive.
