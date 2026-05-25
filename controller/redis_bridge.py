@@ -10,6 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Awaitable
 
 import redis.asyncio as aioredis
@@ -18,6 +21,14 @@ if TYPE_CHECKING:
     from job_manager import JobManager
 
 logger = logging.getLogger(__name__)
+
+# Durable swarm board lives in the Memory Palace (host-mounted into Honoré at
+# ~/.n184/). The controller is always-on and authoritative, so it owns this log;
+# Honoré re-reads it to recover in-flight work after a context/session reset.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+PALACE_DIR = Path(
+    os.environ.get("N184_PALACE_DIR", str(_REPO_ROOT / "build" / "data" / "palace"))
+)
 
 
 class RedisBridge:
@@ -54,6 +65,36 @@ class RedisBridge:
         channel = f"n184:input:{agent_name}"
         await self._client.publish(channel, json.dumps(message))
         logger.debug("Published to %s", channel)
+
+    def record_swarm_event(self, kind: str, summary: str) -> None:
+        """Append one line to the durable swarm board (PALACE/swarm-state.md).
+
+        Honoré's conversation context is not durable — a long query can time out
+        and resume into a fresh, empty session, wiping its in-flight tracking. The
+        controller never resets, so it keeps an authoritative log of every dispatch
+        and finding here; Honoré is told (in its soul) to read it to recover.
+        """
+        try:
+            PALACE_DIR.mkdir(parents=True, exist_ok=True)
+            path = PALACE_DIR / "swarm-state.md"
+            ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            events: list[str] = []
+            if path.exists():
+                body = path.read_text().split("<!--events-->\n", 1)
+                if len(body) == 2:
+                    events = [ln for ln in body[1].splitlines() if ln.startswith("- ")]
+            events.append(f"- {ts} | {kind} | {summary}")
+            events = events[-200:]  # bound the file
+            header = (
+                "# N184 Swarm Board — auto-maintained by the controller\n\n"
+                "Durable log of dispatches and findings. **Honoré: read this to "
+                "recover in-flight work after any context reset** — your conversation "
+                "memory is not durable. Most recent events at the bottom.\n\n"
+                "<!--events-->\n"
+            )
+            path.write_text(header + "\n".join(events) + "\n")
+        except Exception:
+            logger.exception("Failed to record swarm event")
 
     async def close_agent(self, agent_name: str) -> None:
         """Signal an agent to close."""
@@ -160,6 +201,11 @@ class RedisBridge:
                 provider or "<default>",
                 model or "<default>",
             )
+            self.record_swarm_event(
+                "DISPATCH",
+                f"scan={scan_id or '?'} agent=vautrin "
+                f"provider={provider or '<default>'} model={model or '<default>'} (queued)",
+            )
         elif target_agent in ("rastignac", "bianchon", "lousteau", "fil-de-soie"):
             # Create on-demand k8s Job
             session_id = (
@@ -185,6 +231,11 @@ class RedisBridge:
                 job_name,
                 provider or "<default>",
                 model or "<default>",
+            )
+            self.record_swarm_event(
+                "DISPATCH",
+                f"scan={scan_id or '?'} agent={target_agent} "
+                f"provider={provider or '<default>'} model={model or '<default>'} job={job_name}",
             )
         else:
             target_jid = data.get("targetJid", "")
@@ -280,6 +331,10 @@ class RedisBridge:
                     )
                     logger.info(
                         "Routed %s finding → %s input (%d chars)", src, target, len(text)
+                    )
+                    self.record_swarm_event(
+                        "FINDING",
+                        f"from={src} {len(text)} chars: {text[:80].strip()!r}",
                     )
                     continue
 

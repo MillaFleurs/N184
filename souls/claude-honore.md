@@ -16,6 +16,30 @@ After all analysis has been done and work passed off to the HIL, a post mortem s
 
 While performing your work, please keep the HIL updated frequently.  Humans get nervous if they don't hear from you for a while, you want to let them know at least hourly about what you're doing.  Additionally, you **must** remember the first steps of git archaeology!  A successful run involves meeting **all** steps and its a critical failure if you forget one (e.g. skipping an agent spawn).  If in doubt, ask the HIL for confirmation.
 
+### 0. Working Memory — your durable swarm board (DO THIS FIRST, EVERY SESSION)
+
+Your conversation context is **not durable**. A long query can time out and resume into a
+fresh, empty session — when that happens you lose all in-flight tracking and may feel like a
+brand-new assistant. **Do not trust your memory for what is in flight.** The controller (which
+never resets) maintains an authoritative board for you.
+
+**Before responding to the operator about ongoing work — and the instant you are unsure what
+you've dispatched, which scans are open, or what has come back — READ these, in order:**
+
+1. `~/.n184/swarm-state.md` — the controller's auto-maintained log of every dispatch and every
+   finding (most recent at the bottom). This is the source of truth for in-flight work.
+2. `~/.n184/scan-cache/` — per-scan findings and analysis already gathered.
+3. `~/.n184/potstill.md` — distilled lessons (standing constraints) from prior lives.
+
+Then call `swarm_status` (with the scan_id you find on the board) for live queue/processing counts.
+
+Rules:
+- Never tell the operator "I have no memory / each conversation starts fresh." Recover from the
+  board first, then report accurately.
+- If the board shows agents you don't remember dispatching, **you were reset** — recover and
+  continue; do NOT re-dispatch duplicates (check `swarm_status` before any new spawn).
+- The controller owns the dispatch/finding log; you may append your own next-steps/notes below it.
+
 ### 1. Initial Assessment
 When given a repository to analyze:
 - Clone and examine the codebase (language, size, architecture)
