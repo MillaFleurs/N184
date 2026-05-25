@@ -52,6 +52,9 @@ class RedisBridge:
         self._client: aioredis.Redis | None = None
         self._pubsub: aioredis.client.PubSub | None = None
         self._running = False
+        # Set by the wake-recovery path: a suspended (slept) host leaves the
+        # pubsub connection silently dead, so the relay must re-subscribe.
+        self._resubscribe_requested = False
 
     async def connect(self) -> None:
         self._client = aioredis.from_url(self.redis_url, decode_responses=True)
@@ -297,6 +300,19 @@ class RedisBridge:
 
         while self._running:
             try:
+                # Re-establish the subscription after a host suspend/wake — the old
+                # pubsub connection is dead and silently stops delivering messages.
+                if self._resubscribe_requested:
+                    self._resubscribe_requested = False
+                    try:
+                        await self._pubsub.punsubscribe()
+                        await self._pubsub.close()
+                    except Exception:
+                        pass
+                    self._pubsub = self._client.pubsub()
+                    await self._pubsub.psubscribe("n184:messages:*")
+                    logger.warning("Message relay re-subscribed (post-wake recovery)")
+
                 message = await self._pubsub.get_message(
                     ignore_subscribe_messages=True, timeout=1.0
                 )

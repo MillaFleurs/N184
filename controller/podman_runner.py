@@ -69,6 +69,10 @@ _BUDGET_ENVS = (
 
 VAUTRIN_MAX_WORKERS = int(os.environ.get("N184_VAUTRIN_MAX_WORKERS", "6"))
 VAUTRIN_POLL_SEC = int(os.environ.get("N184_VAUTRIN_POLL_SEC", "10"))
+# A scaler poll arriving this many seconds late means the host was suspended
+# (e.g. MacBook sleep). Connections are likely dead and in-flight workers froze
+# and died, so we recover: reconnect, reap orphans, breadcrumb the board.
+WAKE_GAP_SEC = int(os.environ.get("N184_WAKE_GAP_SEC", "120"))
 
 
 async def _run(*args: str) -> tuple[int, str]:
@@ -87,6 +91,8 @@ class PodmanJobManager:
 
     def __init__(self, redis_bridge: Any) -> None:
         self.redis_bridge = redis_bridge
+        self._orphan_strikes = 0  # consecutive polls with processing>0 & no workers
+        self._last_poll = 0.0     # wall-clock of the last scaler tick (wake detect)
 
     def initialize(self) -> None:
         """Verify podman is reachable and the compose network exists."""
@@ -247,6 +253,60 @@ class PodmanJobManager:
         else:
             logger.info("Spawned Vautrin worker %s", job_name)
 
+    async def _reap_orphans(self, redis_client: Any) -> None:
+        """Clear stale n184:vautrin-processing claims left by workers that died
+        (crash/sleep) without acking. Only fires when ZERO workers are actually
+        running, so it never touches a live claim. Debounced two polls to avoid a
+        spawn/claim race. This is what self-heals the recurring phantom 'N zombies'
+        that swarm_status reports after a death."""
+        try:
+            proc = await redis_client.llen("n184:vautrin-processing")
+        except Exception:
+            return
+        if proc <= 0:
+            self._orphan_strikes = 0
+            return
+        if await self._running_vautrin_count() > 0:
+            self._orphan_strikes = 0
+            return
+        self._orphan_strikes += 1
+        if self._orphan_strikes >= 2:
+            await redis_client.delete("n184:vautrin-processing")
+            logger.warning(
+                "Orphan-reaper: cleared %d stale vautrin-processing entries (no workers running)",
+                proc,
+            )
+            self.redis_bridge.record_swarm_event(
+                "REAP", f"cleared {proc} orphaned vautrin-processing entries (dead workers)"
+            )
+            self._orphan_strikes = 0
+
+    async def _recover_after_wake(self, redis_client: Any, gap_sec: int) -> None:
+        """Host resumed from suspend. Reconnect the relay's pubsub (a suspended
+        connection silently stops delivering), reap frozen-worker orphans, and
+        leave a board breadcrumb so Honoré knows in-flight work was lost."""
+        try:
+            # Make the relay loop re-subscribe on its next iteration.
+            self.redis_bridge._resubscribe_requested = True
+            await redis_client.ping()  # forces the client to reconnect
+        except Exception:
+            logger.exception("Wake recovery: reconnect failed")
+        try:
+            proc = await redis_client.llen("n184:vautrin-processing")
+            if proc > 0 and await self._running_vautrin_count() == 0:
+                await redis_client.delete("n184:vautrin-processing")
+                logger.warning("Wake recovery: reaped %d orphaned processing entries", proc)
+        except Exception:
+            logger.exception("Wake recovery: reap failed")
+        try:
+            self.redis_bridge.record_swarm_event(
+                "WAKE",
+                f"host resumed after ~{gap_sec}s suspend — relay reconnected, orphans reaped; "
+                "any in-flight agents were lost and need re-dispatch",
+            )
+        except Exception:
+            pass
+
     async def vautrin_scaler(self, redis_client: Any) -> None:
         """Watch n184:vautrin-queue and keep enough workers running.
 
@@ -260,12 +320,22 @@ class PodmanJobManager:
         )
         while True:
             try:
+                now = time.time()
+                # Wake detection: a tick far later than the poll interval means the
+                # host was suspended (sleep). Recover connections + reap dead workers.
+                if self._last_poll and (now - self._last_poll) > WAKE_GAP_SEC:
+                    await self._recover_after_wake(redis_client, int(now - self._last_poll))
+                self._last_poll = now
+
                 depth = await redis_client.llen("n184:vautrin-queue")
                 if depth > 0:
                     running = await self._running_vautrin_count()
                     want = min(depth, VAUTRIN_MAX_WORKERS) - running
                     for _ in range(max(0, want)):
                         await self._spawn_vautrin_worker()
+
+                # Self-heal stale claims from workers that died without acking.
+                await self._reap_orphans(redis_client)
             except asyncio.CancelledError:
                 break
             except Exception:
