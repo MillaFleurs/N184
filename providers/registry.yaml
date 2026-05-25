@@ -39,14 +39,14 @@ providers:
     type: openai
     base_url: https://api.openai.com/v1
     api_key_env: OPENAI_API_KEY
-    default_model: gpt-4o
+    default_model: gpt-5.5
     runtime: openai-sdk
-    notes: OpenAI GPT family. Future model names (gpt-5, gpt-5.5, ...) work without code changes — pass any model string through.
+    notes: OpenAI GPT family. Model strings pass through untouched, so new releases work without code changes.
 
   deepseek:
     type: openai-compat
     base_url: https://api.deepseek.com
     api_key_env: DEEPSEEK_API_KEY
-    default_model: deepseek-chat
+    default_model: deepseek-reasoner
     runtime: openai-sdk
-    notes: DeepSeek (OpenAI-compatible API). Useful as a low-cost Vautrin model in the swarm.
+    notes: DeepSeek (OpenAI-compatible API). deepseek-reasoner is the stronger reasoning model for grounded Vautrin analysis; deepseek-chat is the cheaper option.

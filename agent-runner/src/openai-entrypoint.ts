@@ -234,6 +234,51 @@ function toolFindFiles(name: string, p = '.', maxResults = 200): string {
   return res;
 }
 
+// Persist a findings report to the scan cache (the one place a Vautrin SHOULD
+// write — its analysis, not the target repo). Sandboxed to ~/.n184/scan-cache.
+const SCAN_CACHE = '/home/node/.n184/scan-cache';
+
+function toolSaveReport(filename: string, content: string): string {
+  const safe = (filename || 'report').replace(/[^A-Za-z0-9._-]/g, '_');
+  const name = safe.endsWith('.md') ? safe : `${safe}.md`;
+  try {
+    fs.mkdirSync(SCAN_CACHE, { recursive: true });
+    fs.writeFileSync(path.join(SCAN_CACHE, name), content, 'utf-8');
+    return `report saved to ~/.n184/scan-cache/${name} (${content.length} chars)`;
+  } catch (e) {
+    return `error saving report: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+// Build a compact repo-layout overview so the model uses real paths from turn 1
+// instead of burning its turn budget guessing (the gpt-4o "no citations" failure).
+function buildWorkspaceOverview(): string {
+  try {
+    const entries = fs.readdirSync(SCAN_BASE, { withFileTypes: true })
+      .filter((e) => !e.name.startsWith('.') && e.name !== 'node_modules');
+    const lines: string[] = [];
+    for (const e of entries.slice(0, 20)) {
+      if (e.isDirectory()) {
+        lines.push(`${SCAN_BASE}/${e.name}/`);
+        try {
+          const sub = fs.readdirSync(path.join(SCAN_BASE, e.name), { withFileTypes: true })
+            .filter((s) => !s.name.startsWith('.') && s.name !== 'node_modules')
+            .slice(0, 24)
+            .map((s) => `  ${e.name}/${s.name}${s.isDirectory() ? '/' : ''}`);
+          lines.push(...sub);
+        } catch {
+          /* ignore */
+        }
+      } else {
+        lines.push(`${SCAN_BASE}/${e.name}`);
+      }
+    }
+    return lines.join('\n');
+  } catch {
+    return '';
+  }
+}
+
 // ── Tool definitions visible to the model ────────────────────────────
 //
 // Mirrors the MCP server tools (send_message, schedule_task). We keep the
@@ -350,6 +395,22 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'save_report',
+      description:
+        'Persist your FULL findings report to the scan cache so Honoré and the Devil\'s Advocate pass can read it from disk. Write complete markdown with file:line citations. Call this once you have evidence, then also send_message a short summary. Filename like "<scan_id>-vautrin-<name>.md".',
+      parameters: {
+        type: 'object',
+        properties: {
+          filename: { type: 'string', description: 'Report filename, e.g. "vercel-ai-20260524-vautrin-deepseek-1.md"' },
+          content: { type: 'string', description: 'Full markdown report (with file:line citations)' },
+        },
+        required: ['filename', 'content'],
+      },
+    },
+  },
 ];
 
 async function handleToolCall(
@@ -441,6 +502,10 @@ async function handleToolCall(
     );
   }
 
+  if (fnName === 'save_report') {
+    return toolSaveReport(String(args.filename ?? 'report.md'), String(args.content ?? ''));
+  }
+
   return `error: unknown tool ${fnName}`;
 }
 
@@ -464,15 +529,26 @@ async function main(): Promise<void> {
   const soul = readSoul();
   const systemMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
   if (soul) systemMessages.push({ role: 'system', content: soul });
+  const overview = buildWorkspaceOverview();
+  if (overview) {
+    systemMessages.push({
+      role: 'system',
+      content:
+        'Repository layout under /workspace/shared (use these EXACT absolute paths — ' +
+        'do NOT guess relative paths, that wastes your turn budget):\n\n' +
+        overview,
+    });
+  }
   systemMessages.push({
     role: 'system',
     content:
-      'You have read-only access to the target repository at /workspace/shared. ' +
-      'Use the tools list_dir, read_file, grep, and find_files to investigate the ' +
-      'ACTUAL code before drawing any conclusion — do not invent file paths, line ' +
-      'numbers, or vulnerabilities. When you have a concrete, evidence-backed finding, ' +
-      'call send_message with it and cite file:line. If the evidence is not there, ' +
-      'say so plainly rather than speculating.',
+      'You have read-only access to the code via list_dir, read_file, grep, find_files. ' +
+      'Investigate the ACTUAL code with absolute paths from the layout above before drawing ' +
+      'any conclusion — never invent file paths, line numbers, or vulnerabilities. ' +
+      'Every finding MUST cite file:line you actually read. When done: (1) call save_report ' +
+      'with your FULL markdown report (so Honoré and the DA pass can read it from disk), then ' +
+      '(2) send_message a short summary. If the evidence is not there, say so plainly rather ' +
+      'than speculating — an unsubstantiated finding is worse than none.',
   });
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [

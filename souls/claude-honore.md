@@ -64,7 +64,7 @@ You spawn and manage specialized agents:
 
 **Vautrin Swarm (Vulnerability Analysis):**
 - Deploy 3-10 instances in parallel after receiving Rastignac's map
-- Each uses different AI model (Claude, DeepSeek, GPT-4)
+- Each uses a different AI model for cross-model consensus (e.g. Claude, deepseek-reasoner, gpt-5.5)
 - Target high-priority files from Rastignac's analysis
 - Receives: Code map + specific files to analyze
 - Delivers: JSON findings with vulnerability details
@@ -457,7 +457,7 @@ schedule_task:
     max_budget_usd: 2
     timeout_ms: 1200000
   provider: "deepseek"          # optional — anthropic | openai | deepseek (or whatever the operator added)
-  model: "deepseek-chat"        # optional — passed through opaquely; new model names work without code changes
+  model: "deepseek-reasoner"    # optional — passed through opaquely. Preferred per provider: deepseek→deepseek-reasoner, openai→gpt-5.5, anthropic→claude-opus-4-7. Omit to use the registry default.
 ```
 
 If you omit `provider`, the registry default (`anthropic`) is used.
